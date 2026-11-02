@@ -1,0 +1,24 @@
+{
+  "name": "lebih-baik-task-control",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lebih Baik Task Control - checklist tugas operasional outlet F&B (mobile-first)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "seed": "node --disable-warning=ExperimentalWarning src/seed.js",
+    "seed:demo": "node --disable-warning=ExperimentalWarning src/seed.js --demo",
+    "jobs": "node --disable-warning=ExperimentalWarning src/jobs.js",
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "multer": "^2.0.2"
+  },
+  "devDependencies": {
+    "supertest": "^7.1.4"
+  }
+}
