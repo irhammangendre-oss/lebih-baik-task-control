@@ -27,7 +27,8 @@ const slim = (t) => ({
   assignee_label: t.assignee_label, completed_by_name: t.completed_by_name, completed_at: t.completed_at,
   verified_by_name: t.verified_by_name, verified_at: t.verified_at, requires_photo: t.requires_photo,
   requires_verification: t.requires_verification, is_critical: t.is_critical, evidence_count: t.evidence_count,
-  escalation_stage: t.escalation_stage, timezone: t.timezone, mode: t.mode,
+  escalation_stage: t.escalation_stage, timezone: t.timezone, mode: t.mode, template_id: t.template_id,
+  shift_no: t.shift_no, is_carried_over: t.is_carried_over, completed_after_shift: t.completed_after_shift,
 });
 
 module.exports = (db) => {
@@ -48,7 +49,9 @@ module.exports = (db) => {
     const tz = outlets[0]?.timezone || user.outlets[0]?.timezone || 'Asia/Jakarta';
     const date = DATE_RE.test(String(q.date || '')) ? String(q.date) : localDate(clock.now(), tz);
     const memberInfo = access.memberInfoLookup(db);
-    const filter = (rows) => (level === 'team' ? rows.filter((t) => access.inTeamScope(user, t, memberInfo)) : rows);
+    const shift = q.shift === '1' || q.shift === '2' ? Number(q.shift) : null;
+    const filter = (rows) => (level === 'team' ? rows.filter((t) => access.inTeamScope(user, t, memberInfo)) : rows)
+      .filter((t) => !shift || t.shift_no === shift);
     return { user, level, outlets, outletIds: outlets.map((o) => o.outlet_id), date, filter };
   }
 
@@ -94,7 +97,7 @@ module.exports = (db) => {
     const list = status ? rows.filter((t) => t.effective_status === status) : rows;
     res.json({
       level, date,
-      filters: { brand_id: req.query.brand_id || null, outlet_id: req.query.outlet_id || null, status },
+      filters: { brand_id: req.query.brand_id || null, outlet_id: req.query.outlet_id || null, status, shift: req.query.shift || null },
       brands: [...new Map(user.outlets.map((o) => [o.brand_id, { id: o.brand_id, name: o.brand_name }])).values()],
       outlets: user.outlets.map((o) => ({ id: o.outlet_id, name: o.outlet_name, brand_id: o.brand_id })),
       cards: cardsFor(rows, rejectedCount(rows, date, outletIds)),

@@ -32,6 +32,7 @@ function createApp(db) {
   api.use(require('./routes/monitoring')(db));
   api.use(require('./routes/org')(db));
   api.use(require('./routes/admin')(db));
+  api.use(require('./routes/shifts')(db));
   api.use(require('./routes/library')(db));
   api.use((_req, _res, next) => next(new HttpError(404, 'Endpoint tidak ditemukan.')));
   app.use('/api', api);

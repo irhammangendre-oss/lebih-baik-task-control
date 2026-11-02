@@ -48,7 +48,7 @@ function loadUser(db, userId) {
     FROM users u JOIN roles r ON r.code = u.role_code WHERE u.id = ?`, userId);
   if (!u || !u.active) return null;
   const perms = new Set(db.all('SELECT permission FROM role_permissions WHERE role_code = ?', u.role_code).map((r) => r.permission));
-  const assigned = db.all(`SELECT uo.outlet_id, uo.team, o.name AS outlet_name, o.brand_id, b.name AS brand_name, o.timezone
+  const assigned = db.all(`SELECT uo.outlet_id, uo.team, uo.shift_no, o.name AS outlet_name, o.brand_id, b.name AS brand_name, o.timezone
       FROM user_outlets uo JOIN outlets o ON o.id = uo.outlet_id JOIN brands b ON b.id = o.brand_id
       WHERE uo.user_id = ? AND o.active = 1 ORDER BY b.name, o.name`, u.id);
   let outlets = assigned;
@@ -56,13 +56,20 @@ function loadUser(db, userId) {
     const teamBy = new Map(assigned.map((a) => [a.outlet_id, a.team]));
     outlets = db.all(`SELECT o.id AS outlet_id, o.name AS outlet_name, o.brand_id, b.name AS brand_name, o.timezone
         FROM outlets o JOIN brands b ON b.id = o.brand_id WHERE o.active = 1 ORDER BY b.name, o.name`)
-      .map((o) => ({ ...o, team: teamBy.get(o.outlet_id) ?? null }));
+      .map((o) => ({ ...o, team: teamBy.get(o.outlet_id) ?? null, shift_no: assigned.find((a) => a.outlet_id === o.outlet_id)?.shift_no ?? null }));
   }
+  // Jadwal shift per tanggal (pengecualian) untuk 14 hari terakhir s.d. ke depan.
+  const since = new Date(clock.now().getTime() - 14 * 86400000).toISOString().slice(0, 10);
+  const roster = new Map(db.all('SELECT outlet_id, work_date, shift_no FROM shift_rosters WHERE user_id = ? AND work_date >= ?', u.id, since)
+    .map((r) => [`${r.outlet_id}:${r.work_date}`, r.shift_no]));
+  const defaultShift = new Map(assigned.map((a) => [a.outlet_id, a.shift_no ?? null]));
   return {
     id: u.id, name: u.name, username: u.username, role_code: u.role_code, role_name: u.role_name,
     role_level: u.role_level, reports_to_user_id: u.reports_to_user_id,
     perms, outlets, assignedOutletIds: new Set(assigned.map((a) => a.outlet_id)),
     outletIds: new Set(outlets.map((o) => o.outlet_id)),
+    /** Shift karyawan di outlet pada tanggal tertentu (null = belum dijadwalkan / fleksibel). */
+    shiftOn: (outletId, date) => roster.get(`${outletId}:${date}`) ?? defaultShift.get(Number(outletId)) ?? null,
   };
 }
 

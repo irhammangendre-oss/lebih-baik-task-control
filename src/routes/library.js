@@ -19,6 +19,13 @@ module.exports = (db) => {
   const r = express.Router();
   r.use(requirePerm('template.manage'));
 
+  function shiftNo(v0) {
+    if (v0 === undefined || v0 === null || v0 === '') return null;
+    const n = Number(v0);
+    if (n !== 1 && n !== 2) throw bad('Shift harus 1 atau 2.');
+    return n;
+  }
+
   function templateInput(body) {
     const b = body || {};
     const category = b.category;
@@ -40,6 +47,7 @@ module.exports = (db) => {
       sop_text: v.str(b.sop_text, 'SOP', { max: 4000 }),
       reference_url: url,
       default_assignee_role: role,
+      default_shift_no: shiftNo(b.default_shift_no),
       ...Object.fromEntries(SCHEDULE_COLS.map((k) => [k, sched[k]])),
       brandIds,
     };
@@ -78,10 +86,10 @@ module.exports = (db) => {
     const now = clock.nowIso();
     const id = db.tx(() => {
       const ins = db.run(`INSERT INTO task_templates (name, instructions, category, is_critical, requires_photo, requires_verification,
-          sop_text, reference_url, default_assignee_role, ${SCHEDULE_COLS.join(', ')}, active, created_by, created_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
+          sop_text, reference_url, default_assignee_role, default_shift_no, ${SCHEDULE_COLS.join(', ')}, active, created_by, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
       d.name, d.instructions, d.category, d.is_critical, d.requires_photo, d.requires_verification, d.sop_text,
-      d.reference_url, d.default_assignee_role, ...SCHEDULE_COLS.map((k) => d[k]), req.user.id, now, now);
+      d.reference_url, d.default_assignee_role, d.default_shift_no, ...SCHEDULE_COLS.map((k) => d[k]), req.user.id, now, now);
       const tid = Number(ins.lastInsertRowid);
       for (const b of d.brandIds) db.run('INSERT INTO template_brands (template_id, brand_id) VALUES (?,?)', tid, b);
       audit(db, req.user.id, 'template.create', 'task_template', tid, { name: d.name });
@@ -96,9 +104,9 @@ module.exports = (db) => {
     const now = clock.nowIso();
     db.tx(() => {
       db.run(`UPDATE task_templates SET name=?, instructions=?, category=?, is_critical=?, requires_photo=?, requires_verification=?,
-          sop_text=?, reference_url=?, default_assignee_role=?, ${SCHEDULE_COLS.map((k) => `${k}=?`).join(', ')}, updated_at=? WHERE id=?`,
+          sop_text=?, reference_url=?, default_assignee_role=?, default_shift_no=?, ${SCHEDULE_COLS.map((k) => `${k}=?`).join(', ')}, updated_at=? WHERE id=?`,
       d.name, d.instructions, d.category, d.is_critical, d.requires_photo, d.requires_verification, d.sop_text, d.reference_url,
-      d.default_assignee_role, ...SCHEDULE_COLS.map((k) => d[k]), now, t.id);
+      d.default_assignee_role, d.default_shift_no, ...SCHEDULE_COLS.map((k) => d[k]), now, t.id);
       db.run('DELETE FROM template_brands WHERE template_id = ?', t.id);
       for (const b of d.brandIds) db.run('INSERT INTO template_brands (template_id, brand_id) VALUES (?,?)', t.id, b);
       // Tugas yang belum dimulai ikut diperbarui; tugas yang sudah berjalan/selesai tetap sesuai snapshot (histori).
@@ -165,14 +173,18 @@ module.exports = (db) => {
 
   function assigneeInput(body, outletId) {
     const type = body.assignee_type;
-    if (!['role', 'team', 'user'].includes(type)) throw bad('Jenis penanggung jawab tidak valid.');
-    const out = { assignee_type: type, assignee_role: null, assignee_team: null, assignee_user_id: null, mode: type === 'user' ? 'individual' : 'shared' };
+    if (!['role', 'team', 'user', 'shift'].includes(type)) throw bad('Jenis penanggung jawab tidak valid.');
+    const out = {
+      assignee_type: type, assignee_role: null, assignee_team: null, assignee_user_id: null,
+      mode: type === 'user' ? 'individual' : 'shared', shift_no: shiftNo(body.shift_no),
+    };
+    if (type === 'shift' && !out.shift_no) throw bad('Pilih Shift 1 atau Shift 2.');
     if (type === 'role') {
       if (!db.get('SELECT 1 FROM roles WHERE code = ?', body.assignee_role)) throw bad('Peran tidak valid.');
       out.assignee_role = body.assignee_role;
     } else if (type === 'team') {
       out.assignee_team = v.str(body.assignee_team, 'Nama tim', { required: true, max: 60 });
-    } else {
+    } else if (type === 'user') {
       const uid = v.int(body.assignee_user_id, 'Karyawan');
       const ok = db.get(`SELECT 1 FROM users u JOIN user_outlets uo ON uo.user_id = u.id
         WHERE u.id = ? AND uo.outlet_id = ? AND u.active = 1`, uid, outletId);
@@ -218,8 +230,8 @@ module.exports = (db) => {
       if (allowedBrands.length && !allowedBrands.includes(outlet.brand_id)) throw bad(`Template tidak berlaku untuk brand outlet ${outlet.name}.`);
       const a = assigneeInput(b, oid);
       const ins = db.run(`INSERT INTO task_assignments (template_id, outlet_id, mode, assignee_type, assignee_role, assignee_team,
-          assignee_user_id, active, created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,1,?,?,?)`,
-      template.id, oid, a.mode, a.assignee_type, a.assignee_role, a.assignee_team, a.assignee_user_id, req.user.id, now, now);
+          assignee_user_id, shift_no, active, created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,1,?,?,?)`,
+      template.id, oid, a.mode, a.assignee_type, a.assignee_role, a.assignee_team, a.assignee_user_id, a.shift_no, req.user.id, now, now);
       const aid = Number(ins.lastInsertRowid);
       insertSchedule(aid, sched, now);
       audit(db, req.user.id, 'assignment.create', 'task_assignment', aid, { template_id: template.id, outlet_id: oid, ...a, schedule: sched });
@@ -239,8 +251,8 @@ module.exports = (db) => {
     const sched = scheduleFrom(b, template);
     const now = clock.nowIso();
     db.tx(() => {
-      db.run(`UPDATE task_assignments SET mode=?, assignee_type=?, assignee_role=?, assignee_team=?, assignee_user_id=?, updated_at=? WHERE id=?`,
-        who.mode, who.assignee_type, who.assignee_role, who.assignee_team, who.assignee_user_id, now, a.id);
+      db.run(`UPDATE task_assignments SET mode=?, assignee_type=?, assignee_role=?, assignee_team=?, assignee_user_id=?, shift_no=?, updated_at=? WHERE id=?`,
+        who.mode, who.assignee_type, who.assignee_role, who.assignee_team, who.assignee_user_id, who.shift_no, now, a.id);
       // Jadwal lama dinonaktifkan (tetap tersimpan untuk histori), jadwal baru berlaku mulai sekarang.
       db.run('UPDATE task_schedules SET active = 0, updated_at = ? WHERE assignment_id = ? AND active = 1', now, a.id);
       removeFutureInstances('assignment_id', a.id);

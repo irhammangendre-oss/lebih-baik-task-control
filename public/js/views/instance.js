@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, sheet, toast, statusChip, lateChip, fmtDateTime, fmtTime, fmtDue, CATEGORY_LABEL, lightbox, askReason, compressImage } from '../ui.js';
+import { h, sheet, toast, statusChip, lateChip, shiftChips, fmtDateTime, fmtTime, fmtDue, CATEGORY_LABEL, lightbox, askReason, compressImage } from '../ui.js';
 
 function notify() { window.dispatchEvent(new Event('lb:refresh-bell')); }
 
@@ -95,7 +95,7 @@ export async function openInstance(id, { onChange } = {}) {
   const history = [];
   for (const sub of d.submissions) {
     history.push(h('div', {},
-      h('div', {}, h('b', {}, sub.submitted_by_name), ` mengirim · ${fmtDateTime(sub.submitted_at, tz)}`, sub.was_late ? h('span', { class: 'chip s-terlambat', style: { marginLeft: '6px' } }, 'Terlambat') : null),
+      h('div', {}, h('b', {}, sub.submitted_by_name), `${sub.shift_no ? ` (Shift ${sub.shift_no})` : ''} mengirim · ${fmtDateTime(sub.submitted_at, tz)}`, sub.was_late ? h('span', { class: 'chip s-terlambat', style: { marginLeft: '6px' } }, 'Terlambat') : null),
       sub.note ? h('div', { class: 'muted' }, `“${sub.note}”`) : null,
       sub.evidence.length ? h('div', { class: 'photo-grid', style: { marginTop: '6px' } }, sub.evidence.map((e) => h('img', { src: e.url, alt: 'Foto bukti', loading: 'lazy', onclick: () => lightbox(e.url) }))) : null));
   }
@@ -105,7 +105,7 @@ export async function openInstance(id, { onChange } = {}) {
   }
 
   const s = sheet(d.name, h('div', { class: 'stack' },
-    h('div', { class: 'tags' }, statusChip(d), lateChip(d), d.is_critical ? h('span', { class: 'chip crit' }, 'Kritis') : null,
+    h('div', { class: 'tags' }, statusChip(d), lateChip(d), shiftChips(d), d.is_critical ? h('span', { class: 'chip crit' }, 'Kritis') : null,
       d.requires_photo ? h('span', { class: 'chip photo' }, '📷 Wajib foto') : null,
       d.requires_verification ? h('span', { class: 'chip' }, 'Perlu verifikasi') : null),
     d.last_rejection ? h('div', { class: 'notice warn' }, h('b', {}, 'Perlu perbaikan: '), d.last_rejection.reason) : null,
@@ -115,6 +115,7 @@ export async function openInstance(id, { onChange } = {}) {
       'Mulai', h('b', {}, fmtDateTime(d.scheduled_at, tz)),
       'Deadline', h('b', {}, fmtDue(d)),
       'Penanggung jawab', h('b', {}, d.assignee_label, d.mode === 'shared' ? ' (tugas bersama)' : ''),
+      d.shift_no ? 'Shift' : null, d.shift_no ? h('b', {}, `Shift ${d.shift_no} (berakhir ${fmtDateTime(d.shift_end_at, tz)})`) : null,
       d.completed_by_name ? 'Dikerjakan oleh' : null, d.completed_by_name ? h('b', {}, `${d.completed_by_name} · ${fmtDateTime(d.completed_at, tz)}`) : null,
       d.verified_by_name ? 'Diverifikasi' : null, d.verified_by_name ? h('b', {}, `${d.verified_by_name} · ${fmtDateTime(d.verified_at, tz)}`) : null),
     ...actions,

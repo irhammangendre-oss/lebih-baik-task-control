@@ -44,8 +44,9 @@ function completeTask(db, user, id, { note, files = [] }) {
           was_late = MAX(was_late, ?), verified_by = NULL, verified_at = NULL, updated_at = ?
         WHERE id = ? AND status IN ('belum','perlu_perbaikan')`, newStatus, user.id, nowIso, late, nowIso, inst.id);
       if (Number(upd.changes) !== 1) throw conflict('Tugas sudah diselesaikan oleh anggota tim lain.');
-      const sub = db.run('INSERT INTO task_submissions (instance_id, submitted_by, submitted_at, note, was_late) VALUES (?,?,?,?,?)',
-        inst.id, user.id, nowIso, note ? String(note).slice(0, 1000) : null, late);
+      const myShift = user.shiftOn ? user.shiftOn(inst.outlet_id, inst.business_date) : null;
+      const sub = db.run('INSERT INTO task_submissions (instance_id, submitted_by, submitted_at, note, was_late, shift_no) VALUES (?,?,?,?,?,?)',
+        inst.id, user.id, nowIso, note ? String(note).slice(0, 1000) : null, late, myShift);
       const subId = Number(sub.lastInsertRowid);
       for (const s of stored) {
         db.run(`INSERT INTO task_evidence (submission_id, instance_id, stored_name, original_name, mime_type, size_bytes, sha256, uploaded_by, created_at)
@@ -116,7 +117,7 @@ function reopenTask(db, user, id, { reason }) {
 /** Detail lengkap: riwayat pengiriman, bukti, verifikasi, dan aksi yang diizinkan untuk user ini. */
 function instanceDetail(db, user, id) {
   const inst = loadScoped(db, user, id);
-  const submissions = db.all(`SELECT s.id, s.submitted_at, s.note, s.was_late, u.name AS submitted_by_name
+  const submissions = db.all(`SELECT s.id, s.submitted_at, s.note, s.was_late, s.shift_no, u.name AS submitted_by_name
     FROM task_submissions s JOIN users u ON u.id = s.submitted_by WHERE s.instance_id = ? ORDER BY s.id`, inst.id);
   const evidence = db.all('SELECT id, submission_id, mime_type, created_at FROM task_evidence WHERE instance_id = ? ORDER BY id', inst.id);
   for (const s of submissions) {

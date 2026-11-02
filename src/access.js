@@ -13,12 +13,27 @@ function teamAt(user, outletId) {
   return o ? o.team || null : null;
 }
 
-/** Apakah user termasuk penanggung jawab tugas (individu / peran / tim). */
-function isAssignee(user, inst) {
+/** Tugas shift yang belum selesai setelah shift-nya berakhir -> dioper ke shift berikutnya (tetap terlihat). */
+function isCarriedOver(inst, nowIso = clock.nowIso()) {
+  return !!(inst.shift_no && inst.shift_end_at && OPEN_STATUSES.includes(inst.status) && nowIso >= inst.shift_end_at);
+}
+
+/**
+ * Apakah user termasuk penanggung jawab tugas (individu / peran / tim / shift).
+ * Tugas ber-shift hanya untuk karyawan di shift tsb; karyawan tanpa jadwal shift dianggap fleksibel.
+ * Setelah shift berakhir, tugas yang belum selesai boleh dikerjakan shift berikutnya.
+ */
+function isAssignee(user, inst, nowIso = clock.nowIso()) {
   if (!user.assignedOutletIds.has(inst.outlet_id) && !user.perms.has('scope.all')) return false;
+  const onShift = () => {
+    if (!inst.shift_no || isCarriedOver(inst, nowIso)) return true;
+    const s = user.shiftOn ? user.shiftOn(inst.outlet_id, inst.business_date) : null;
+    return s === null || s === inst.shift_no;
+  };
   if (inst.assignee_type === 'user') return inst.assignee_user_id === user.id;
-  if (inst.assignee_type === 'role') return inst.assignee_role === user.role_code;
-  if (inst.assignee_type === 'team') return !!inst.assignee_team && teamAt(user, inst.outlet_id) === inst.assignee_team;
+  if (inst.assignee_type === 'role') return inst.assignee_role === user.role_code && onShift();
+  if (inst.assignee_type === 'team') return !!inst.assignee_team && teamAt(user, inst.outlet_id) === inst.assignee_team && onShift();
+  if (inst.assignee_type === 'shift') return user.assignedOutletIds.has(inst.outlet_id) && onShift();
   return false;
 }
 
@@ -44,7 +59,9 @@ function monitorLevel(user) {
  */
 function inTeamScope(user, inst, memberInfo) {
   const team = teamAt(user, inst.outlet_id);
-  if (inst.assignee_type === 'role') return true;
+  const myShift = user.shiftOn ? user.shiftOn(inst.outlet_id, inst.business_date) : null;
+  if (inst.shift_no && myShift !== null && myShift !== inst.shift_no && !isCarriedOver(inst)) return false;
+  if (inst.assignee_type === 'role' || inst.assignee_type === 'shift') return true;
   if (inst.assignee_type === 'team') return !team || inst.assignee_team === team;
   if (inst.assignee_user_id === user.id) return true;
   const m = memberInfo(inst.assignee_user_id, inst.outlet_id) || {};
@@ -83,9 +100,13 @@ function decorate(inst, nowIso = clock.nowIso()) {
   const overdue = OPEN_STATUSES.includes(inst.status) && inst.due_at < nowIso;
   inst.is_overdue = overdue;
   inst.effective_status = overdue ? 'terlambat' : inst.status;
-  inst.assignee_label = inst.assignee_type === 'user' ? inst.assignee_user_name
+  inst.is_carried_over = isCarriedOver(inst, nowIso);
+  inst.completed_after_shift = !!(inst.shift_end_at && inst.completed_at && inst.completed_at > inst.shift_end_at);
+  const base = inst.assignee_type === 'user' ? inst.assignee_user_name
     : inst.assignee_type === 'team' ? `Tim ${inst.assignee_team}`
-      : `Semua ${inst.assignee_role_name || inst.assignee_role}`;
+      : inst.assignee_type === 'shift' ? `Semua Shift ${inst.shift_no}`
+        : `Semua ${inst.assignee_role_name || inst.assignee_role}`;
+  inst.assignee_label = inst.shift_no && inst.assignee_type !== 'shift' && inst.assignee_type !== 'user' ? `${base} · Shift ${inst.shift_no}` : base;
   inst.has_reference_image = !!inst.has_reference_image;
   for (const k of ['is_critical', 'requires_photo', 'requires_verification', 'was_late']) inst[k] = !!inst[k];
   return inst;
@@ -107,6 +128,6 @@ function getInstance(db, id) {
 }
 
 module.exports = {
-  assertOutlet, teamAt, isAssignee, canComplete, monitorLevel, inTeamScope, memberInfoLookup,
+  assertOutlet, teamAt, isAssignee, isCarriedOver, canComplete, monitorLevel, inTeamScope, memberInfoLookup,
   listInstances, getInstance, decorate, INSTANCE_SELECT,
 };

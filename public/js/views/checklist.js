@@ -3,13 +3,14 @@ import { h, clear, loading, errorBox, select, CATEGORY_LABEL, fmtDate, mount } f
 import { state } from '../state.js';
 import { taskCard } from './tasks.js';
 
-let current = { outlet_id: null, date: null, tab: null };
+let current = { outlet_id: null, date: null, tab: null, shift: '' };
 
 export async function renderChecklist(el) {
   loading(el);
   const qs = new URLSearchParams();
   if (current.outlet_id) qs.set('outlet_id', current.outlet_id);
   if (current.date) qs.set('date', current.date);
+  if (current.shift) qs.set('shift', current.shift);
   let d;
   try { d = await api(`/checklist?${qs}`); } catch (e) { return errorBox(el, e, () => renderChecklist(el)); }
   if (!d.outlet) return mount(el, h('h1', {}, 'Checklist Outlet'), h('div', { class: 'card empty' }, 'Anda belum ditempatkan di outlet.'));
@@ -29,7 +30,12 @@ export async function renderChecklist(el) {
   mount(el, 
     h('h1', {}, 'Checklist Outlet'),
     h('div', { class: 'filters' }, outletSel || h('div', { class: 'card', style: { padding: '10px 12px' } }, h('b', {}, d.outlet.outlet_name)), dateIn),
-    h('div', { class: 'muted small', style: { marginBottom: '8px' } }, fmtDate(d.date)),
+    h('div', { class: 'muted small', style: { marginBottom: '8px' } }, fmtDate(d.date),
+      d.shift?.current ? ` · sekarang Shift ${d.shift.current.shift_no}` : ''),
+    h('div', { class: 'tabs' }, [['', 'Semua shift'], ...d.shift.shifts.map((s) => [String(s.shift_no), `Shift ${s.shift_no} · ${s.start_time}–${s.end_time}`])].map(([v, l]) => h('button', {
+      class: current.shift === v ? 'active' : '', onclick: () => { current.shift = v; reload(); },
+    }, l))),
+    h('a', { class: 'btn block', href: '#/serah-terima', style: { marginBottom: '12px' } }, '📝 Serah Terima Shift'),
     h('div', { class: 'card', style: { marginBottom: '12px' } },
       h('div', { class: 'row' }, h('b', { class: 'grow' }, `${all.done}/${all.total} selesai`), all.overdue ? h('span', { class: 'chip s-terlambat' }, `${all.overdue} terlambat`) : null),
       h('div', { class: 'progress', style: { marginTop: '8px' } }, h('div', { style: { width: `${all.total ? (all.done / all.total) * 100 : 0}%` } }))),

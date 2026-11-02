@@ -11,6 +11,7 @@ const tasks = require('../services/tasks');
 const { absolutePath } = require('../services/files');
 const { localDate, addDays, DATE_RE } = require('../time');
 const { OPEN_STATUSES } = require('../constants');
+const { shiftStatus } = require('../services/shifts');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxUploadMb * 1024 * 1024, files: 3 } });
 
@@ -42,7 +43,25 @@ module.exports = (db) => {
     }).map((t) => ({ ...t, is_upcoming: t.scheduled_at > nowIso, can_complete: access.canComplete(user, t) }))
       .sort((a, b) => sortKey(a) - sortKey(b) || a.due_at.localeCompare(b.due_at));
     const current = tasksOut.filter((t) => !t.is_upcoming);
+    // Info shift per outlet + serah terima masuk untuk shift user hari ini.
+    const shiftsInfo = outlets.map((o) => {
+      const st = shiftStatus(db, o, now);
+      const today = todayBy.get(o.outlet_id);
+      return { outlet_id: o.outlet_id, outlet_name: o.outlet_name, timezone: o.timezone, current: st.current, my_shift: user.shiftOn(o.outlet_id, today) };
+    });
+    const handovers = [];
+    for (const s of shiftsInfo) {
+      const today = todayBy.get(s.outlet_id);
+      const rows = db.all(`SELECT h.id, h.outlet_id, h.from_shift, h.to_shift, h.to_business_date, h.acknowledged_at, u.name AS created_by_name,
+          (SELECT COUNT(*) FROM shift_handover_items i JOIN task_instances ti ON ti.id = i.instance_id
+            WHERE i.handover_id = h.id AND ti.status IN ('belum','perlu_perbaikan')) AS open_items
+        FROM shift_handovers h JOIN users u ON u.id = h.created_by
+        WHERE h.outlet_id = ? AND h.to_business_date = ? AND h.created_by <> ? ORDER BY h.id DESC`, s.outlet_id, today, user.id);
+      for (const h of rows) if (s.my_shift === null || h.to_shift === s.my_shift) handovers.push({ ...h, outlet_name: s.outlet_name });
+    }
     res.json({
+      shifts: shiftsInfo,
+      handovers,
       tasks: tasksOut,
       summary: {
         total: current.length,
@@ -61,7 +80,9 @@ module.exports = (db) => {
     const outlet = user.outlets.find((o) => o.outlet_id === outletId);
     const date = DATE_RE.test(String(req.query.date || '')) ? String(req.query.date) : localDate(clock.now(), outlet.timezone);
     const nowIso = clock.nowIso();
+    const shiftFilter = req.query.shift === '1' || req.query.shift === '2' ? Number(req.query.shift) : null;
     const rows = access.listInstances(db, [outletId], date)
+      .filter((t) => !shiftFilter || t.shift_no === shiftFilter)
       .map((t) => ({ ...t, is_upcoming: t.scheduled_at > nowIso, can_complete: OPEN_STATUSES.includes(t.status) && access.canComplete(user, t) }));
     const groups = { opening: [], operasional: [], closing: [] };
     for (const t of rows) groups[t.category].push(t);
@@ -70,8 +91,14 @@ module.exports = (db) => {
       done: list.filter((t) => !OPEN_STATUSES.includes(t.status)).length,
       overdue: list.filter((t) => t.is_overdue).length,
     });
+    // Tugas belum selesai dari hari sebelumnya tetap ditampilkan (tidak hilang saat pergantian shift/hari).
+    const carried = date === localDate(clock.now(), outlet.timezone)
+      ? access.listInstances(db, [outletId], addDays(date, -1)).filter((t) => OPEN_STATUSES.includes(t.status) && (!shiftFilter || t.shift_no === shiftFilter))
+        .map((t) => ({ ...t, is_upcoming: false, from_previous_day: true, can_complete: access.canComplete(user, t) }))
+      : [];
+    for (const t of carried) groups[t.category].unshift(t);
     res.json({
-      outlet, date, groups,
+      outlet, date, groups, shift: shiftStatus(db, outlet), shift_filter: shiftFilter,
       counts: Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, count(v)])),
     });
   });

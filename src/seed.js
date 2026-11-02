@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 const { ROLES, DEFAULT_ROLE_PERMISSIONS, DEFAULT_ESCALATION_RULES } = require('./constants');
 const { hashPassword } = require('./auth');
 const starter = require('./starter-templates');
+const { ensureOutletShifts } = require('./services/shifts');
 
 const now = () => new Date().toISOString();
 
@@ -19,6 +20,7 @@ function ensureBaseData(db, { adminPassword = process.env.ADMIN_PASSWORD, quiet 
         repeat_threshold, repeat_window_days, updated_at) VALUES (?,?,?,?,?,?,?,?)`,
       e.code, e.name, e.stage1_after_minutes, e.stage2_after_minutes, e.stage3_after_minutes, e.repeat_threshold, e.repeat_window_days, now());
     }
+    ensureOutletShifts(db); // setiap outlet wajib punya Shift 1 & Shift 2
     if (!db.get('SELECT COUNT(*) AS c FROM task_templates').c) {
       for (const t of starter) insertTemplate(db, t);
     }
@@ -34,10 +36,11 @@ function ensureBaseData(db, { adminPassword = process.env.ADMIN_PASSWORD, quiet 
 function insertTemplate(db, t) {
   const r = db.run(`INSERT INTO task_templates (name, instructions, category, is_critical, requires_photo, requires_verification,
       recurrence, days_of_week, start_time, due_time, end_time, interval_minutes, due_after_minutes, default_assignee_role,
-      active, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`,
+      default_shift_no, active, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`,
   t.name, t.instructions || '', t.category, t.is_critical || 0, t.requires_photo || 0, t.requires_verification || 0,
   t.recurrence, t.days_of_week || null, t.start_time, t.due_time || null, t.end_time || null, t.interval_minutes || null,
-  t.due_after_minutes || null, t.default_assignee_role || null, now(), now());
+  t.due_after_minutes || null, t.default_assignee_role || null,
+  t.default_shift_no ?? (t.category === 'opening' ? 1 : t.category === 'closing' ? 2 : null), now(), now());
   return Number(r.lastInsertRowid);
 }
 
@@ -50,10 +53,10 @@ function seedDemo(db, { password = 'demo1234', createdAt = now() } = {}) {
     const outlet = (brandId, code, name) => Number(db.run('INSERT INTO outlets (brand_id, code, name, timezone, active, created_at) VALUES (?,?,?,?,1,?)',
       brandId, code, name, 'Asia/Jakarta', ts).lastInsertRowid);
     const hash = hashPassword(password);
-    const user = (name, username, role, outlets, reportsTo = null) => {
+    const user = (name, username, role, outlets, reportsTo = null, shift = null) => {
       const id = Number(db.run(`INSERT INTO users (name, username, password_hash, role_code, reports_to_user_id, active, created_at, updated_at)
         VALUES (?,?,?,?,?,1,?,?)`, name, username, hash, role, reportsTo, ts, ts).lastInsertRowid);
-      for (const [oid, team] of outlets) db.run('INSERT INTO user_outlets (user_id, outlet_id, team) VALUES (?,?,?)', id, oid, team || null);
+      for (const [oid, team] of outlets) db.run('INSERT INTO user_outlets (user_id, outlet_id, team, shift_no) VALUES (?,?,?,?)', id, oid, team || null, shift);
       return id;
     };
     const bKopi = brand('Demo Kopi');
@@ -61,6 +64,11 @@ function seedDemo(db, { password = 'demo1234', createdAt = now() } = {}) {
     const k1 = outlet(bKopi, 'KOPI-01', 'Demo Kopi Kemang');
     const k2 = outlet(bKopi, 'KOPI-02', 'Demo Kopi Depok');
     const m1 = outlet(bBakmi, 'BAKMI-01', 'Demo Bakmi Tebet');
+    ensureOutletShifts(db);
+    // Jam shift berbeda per outlet (contoh).
+    const setShift = (oid, n, s, e) => db.run('UPDATE outlet_shifts SET start_time = ?, end_time = ? WHERE outlet_id = ? AND shift_no = ?', s, e, oid, n);
+    setShift(k1, 1, '07:00', '15:00'); setShift(k1, 2, '15:00', '23:30');
+    setShift(k2, 1, '08:00', '16:00'); setShift(k2, 2, '16:00', '00:00');
 
     const ids = {};
     ids.spv = user('Sari (SPV)', 'spv', 'spv', [[k1], [k2]]);
@@ -68,13 +76,15 @@ function seedDemo(db, { password = 'demo1234', createdAt = now() } = {}) {
     ids.head = user('Hendra (Head Kemang)', 'head', 'head', [[k1]], ids.spv);
     ids.head2 = user('Dewi (Head Depok)', 'head2', 'head', [[k2]], ids.spv);
     ids.head3 = user('Rudi (Head Tebet)', 'head3', 'head', [[m1]], ids.spv2);
-    ids.pic = user('Putri (PIC Bar)', 'pic', 'pic', [[k1, 'Bar']], ids.head);
-    ids.pic2 = user('Agus (PIC Dapur)', 'pic2', 'pic', [[k1, 'Dapur']], ids.head);
-    ids.crew = user('Andi (Crew Bar)', 'crew', 'crew', [[k1, 'Bar']], ids.pic);
-    ids.crew2 = user('Budi (Crew Dapur)', 'crew2', 'crew', [[k1, 'Dapur']], ids.pic2);
-    ids.kasir = user('Citra (Kasir)', 'kasir', 'kasir', [[k1]], ids.pic);
-    ids.crew3 = user('Eko (Crew Depok)', 'crew3', 'crew', [[k2]], ids.head2);
-    ids.crew4 = user('Fajar (Crew Tebet)', 'crew4', 'crew', [[m1]], ids.head3);
+    ids.pic = user('Putri (PIC Bar)', 'pic', 'pic', [[k1, 'Bar']], ids.head, 1);
+    ids.pic2 = user('Agus (PIC Dapur)', 'pic2', 'pic', [[k1, 'Dapur']], ids.head, 2);
+    ids.crew = user('Andi (Crew Bar)', 'crew', 'crew', [[k1, 'Bar']], ids.pic, 1);
+    ids.crew2 = user('Budi (Crew Dapur)', 'crew2', 'crew', [[k1, 'Dapur']], ids.pic2, 2);
+    ids.kasir = user('Citra (Kasir)', 'kasir', 'kasir', [[k1]], ids.pic, 1);
+    ids.crew5 = user('Gita (Crew Bar Shift 2)', 'crew5', 'crew', [[k1, 'Bar']], ids.pic2, 2);
+    ids.kasir2 = user('Hana (Kasir Shift 2)', 'kasir2', 'kasir', [[k1]], ids.pic2, 2);
+    ids.crew3 = user('Eko (Crew Depok)', 'crew3', 'crew', [[k2]], ids.head2, 1);
+    ids.crew4 = user('Fajar (Crew Tebet)', 'crew4', 'crew', [[m1]], ids.head3, 1);
 
     const tpl = Object.fromEntries(db.all('SELECT * FROM task_templates').map((t) => [t.name, t]));
     const assign = (name, outletId, who) => {
@@ -82,9 +92,9 @@ function seedDemo(db, { password = 'demo1234', createdAt = now() } = {}) {
       if (!t) return;
       const w = who || { type: 'role', role: t.default_assignee_role || 'crew' };
       const a = Number(db.run(`INSERT INTO task_assignments (template_id, outlet_id, mode, assignee_type, assignee_role, assignee_team,
-          assignee_user_id, active, created_at, updated_at) VALUES (?,?,?,?,?,?,?,1,?,?)`,
+          assignee_user_id, shift_no, active, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,1,?,?)`,
       t.id, outletId, w.type === 'user' ? 'individual' : 'shared', w.type, w.type === 'role' ? w.role : null,
-      w.type === 'team' ? w.team : null, w.type === 'user' ? w.user : null, ts, ts).lastInsertRowid);
+      w.type === 'team' ? w.team : null, w.type === 'user' ? w.user : null, w.shift ?? t.default_shift_no ?? null, ts, ts).lastInsertRowid);
       db.run(`INSERT INTO task_schedules (assignment_id, recurrence, days_of_week, start_time, due_time, end_time, interval_minutes,
           due_after_minutes, active, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,1,?,?)`,
       a, t.recurrence, t.days_of_week, t.start_time, t.due_time, t.end_time, t.interval_minutes, t.due_after_minutes, ts, ts);
@@ -92,6 +102,7 @@ function seedDemo(db, { password = 'demo1234', createdAt = now() } = {}) {
     for (const name of Object.keys(tpl)) {
       if (name === 'Bersihkan peralatan') assign(name, k1, { type: 'team', team: 'Bar' });
       else if (name === 'Cek gas, listrik & kunci pintu') assign(name, k1, { type: 'user', user: ids.pic });
+      else if (name === 'Sapu dan pel lantai') assign(name, k1, { type: 'shift', shift: 1 });
       else assign(name, k1);
     }
     for (const name of ['Menata meja dan kursi', 'Cek suhu chiller & freezer', 'Inspeksi kebersihan toilet', 'Pembersihan menyeluruh closing']) assign(name, k2);

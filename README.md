@@ -5,6 +5,7 @@ Aplikasi checklist tugas operasional outlet F&B (multi-brand), mobile-first, ber
 - **Tugas Saya**: tugas individu dan tugas bersama tim/peran, dengan satu tombol besar **"Selesaikan Tugas"** (wajib foto jika dikonfigurasi).
 - **Checklist Outlet**: Opening / Operasional / Closing per outlet & tanggal, termasuk tugas berulang (mis. inspeksi toilet tiap jam).
 - **Monitoring**: isinya menyesuaikan izin (PIC → area/shift, Head → outlet + verifikasi, SPV → outlet yang diawasi + tugas sering terlewat, Management → semua brand/outlet + perbandingan + masalah berulang).
+- **Shift & Serah Terima**: setiap outlet punya Shift 1 & Shift 2 (jam diatur per outlet), karyawan dijadwalkan ke salah satu shift, tugas bisa ditugaskan per shift, dan catatan serah terima antar shift.
 - Menu ☰ (khusus yang berizin): Task Library & Penugasan, Brand/Outlet/Karyawan, Aturan Eskalasi, Peran & Izin, Log Audit.
 
 ## Teknologi
@@ -41,7 +42,7 @@ Buka `http://localhost:3000`. Akun demo (password **demo1234**):
 | `spv2` | SPV | Demo Bakmi Tebet |
 | `head`, `head2`, `head3` | Head / Store Leader | Kemang, Depok, Tebet |
 | `pic` (tim Bar), `pic2` (tim Dapur) | PIC | Kemang |
-| `crew` (Bar), `crew2` (Dapur), `kasir` | Crew / Kasir | Kemang |
+| `crew` (Bar, Shift 1), `crew2` (Dapur, Shift 2), `kasir` (Shift 1), `crew5` (Bar, Shift 2), `kasir2` (Shift 2) | Crew / Kasir | Kemang |
 | `crew3`, `crew4` | Crew | Depok, Tebet |
 
 Untuk produksi **jangan** pakai `seed:demo`. Jalankan `npm run seed` (atau langsung `npm start`) — akun `admin` dibuat dengan password dari `ADMIN_PASSWORD`, atau password acak yang dicetak sekali di log. Starter Task Library (14 template F&B) ikut dibuat, **tanpa** ditugaskan ke outlet mana pun.
@@ -112,6 +113,18 @@ User=lebihbaik
 - Template/penugasan **dinonaktifkan**, tidak dihapus. Menghentikan penugasan hanya menghapus kejadian yang belum jatuh tempo & belum dikerjakan; histori tetap ada.
 - Semua angka dashboard dihitung dari record database.
 
+## Shift & Serah Terima
+
+Hanya untuk tanggung jawab tugas & serah terima — **bukan** absensi atau penggajian.
+
+- **Dua shift standar per outlet** (`outlet_shifts`). Jam diatur per outlet di ☰ Shift & Jadwal Karyawan (izin `shift.manage`, default Head/SPV/Management). Outlet baru otomatis mendapat Shift 1 (07:00–15:00) & Shift 2 (15:00–23:00). Jam selesai lebih awal dari jam mulai = berakhir keesokan hari.
+- **Jadwal karyawan**: shift tetap per outlet (di data karyawan atau layar Shift & Jadwal) + pengecualian per tanggal (mis. tukar shift). Karyawan tanpa shift dianggap **fleksibel** (boleh mengerjakan tugas shift mana pun).
+- **Penugasan per shift**: jenis penanggung jawab baru "Semua karyawan di shift tertentu", dan tugas peran/tim/individu bisa diberi label Shift 1/2. Template punya *shift default* (starter: Opening → Shift 1, Closing → Shift 2, Operasional → semua shift).
+- **Pergantian shift**: tugas shift yang belum selesai saat shift berakhir otomatis **dioper** — tetap terlihat (label "Lanjutan dari Shift N") dan boleh diselesaikan oleh shift berikutnya. Checklist juga menampilkan sisa tugas kemarin yang belum selesai.
+- **Identitas & waktu asli dipertahankan**: tugas tetap tercatat milik shift asal, jadwal/deadline tidak berubah, dan setiap pengiriman mencatat siapa, kapan, dan dari shift mana (`task_submissions.shift_no`). Label "Diselesaikan shift berikutnya" muncul jika selesai setelah shift asal berakhir.
+- **Serah terima** (Checklist Outlet → 📝 Serah Terima Shift, izin `handover.create`): mencatat otomatis daftar tugas yang belum selesai (snapshot) + masalah stok, masalah peralatan, dan catatan penting. Satu catatan per outlet/tanggal/shift asal; bisa diperbarui sampai diterima. Shift penerima melihat banner di **Tugas Saya**, membuka detail (termasuk status terkini tiap tugas), lalu menekan "Saya sudah baca & terima". Pembuat tidak bisa menerima catatannya sendiri. Riwayat 7 hari tersedia.
+- **Migrasi otomatis**: database versi sebelumnya di-upgrade saat server start (`PRAGMA user_version = 2`), data lama tetap utuh. Backup database sebelum upgrade tetap disarankan.
+
 ## Keamanan
 
 Password di-hash scrypt; sesi berupa token acak (disimpan sebagai hash) di cookie HttpOnly/SameSite=Lax; proteksi CSRF via header wajib `X-Requested-With`; pembatasan percobaan login; CSP ketat; foto disajikan hanya melalui endpoint terotorisasi; pencegahan eskalasi hak akses (non-Management tidak bisa membuat/mengubah user setingkat atau di atasnya); audit log untuk login, template, penugasan, penyelesaian, verifikasi, perubahan user/izin/eskalasi.
@@ -136,7 +149,7 @@ test/                   node:test + supertest
 npm test
 ```
 
-23 tes otomatis, termasuk alur penerimaan lengkap (template → penugasan → checklist → penyelesaian + foto wajib → verifikasi tolak/setujui → eskalasi bertahap tanpa duplikasi → monitoring per peran → histori → isolasi data antar outlet), serta tes izin tim/PIC, tugas individu, aturan kritis, ambang pengulangan, CSRF/sesi, pencegahan eskalasi hak akses, dan idempotensi pembuatan tugas.
+28 tes otomatis, termasuk alur penerimaan lengkap (template → penugasan → checklist → penyelesaian + foto wajib → verifikasi tolak/setujui → eskalasi bertahap tanpa duplikasi → monitoring per peran → histori → isolasi data antar outlet), tes shift (jam per outlet, tugas per shift, tukar shift, tugas dioper, serah terima, migrasi database lama), serta tes izin tim/PIC, tugas individu, aturan kritis, ambang pengulangan, CSRF/sesi, pencegahan eskalasi hak akses, dan idempotensi pembuatan tugas.
 
 ## Batasan MVP & pengembangan berikutnya
 

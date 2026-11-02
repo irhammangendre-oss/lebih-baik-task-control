@@ -38,9 +38,63 @@ class Db {
     }
   }
   migrate() {
-    this.raw.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+    const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
+    this.raw.exec(schema);
+    const version = this.raw.prepare('PRAGMA user_version').get().user_version;
+    if (version < 2) migrateV2(this, schema);
   }
   close() { this.raw.close(); }
+}
+
+const hasColumn = (db, table, col) => db.raw.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
+
+// Kolom yang disalin saat membangun ulang tabel lama (v1) ke struktur baru.
+const V1_COLUMNS = {
+  task_assignments: 'id, template_id, outlet_id, mode, assignee_type, assignee_role, assignee_team, assignee_user_id, active, created_by, created_at, updated_at',
+  task_instances: `id, schedule_id, assignment_id, template_id, outlet_id, business_date, scheduled_at, due_at, name, category, is_critical,
+    requires_photo, requires_verification, mode, assignee_type, assignee_role, assignee_team, assignee_user_id, status, completed_by,
+    completed_at, was_late, verified_by, verified_at, escalation_stage, last_escalated_at, created_at, updated_at`,
+};
+
+/**
+ * v2: shift & serah terima. Database v1 di-upgrade otomatis tanpa kehilangan data:
+ * kolom baru ditambahkan, dan tabel dengan CHECK constraint yang berubah dibangun ulang.
+ */
+function migrateV2(db, schema) {
+  const raw = db.raw;
+  const legacy = !hasColumn(db, 'task_instances', 'shift_no');
+  if (legacy) {
+    raw.exec('PRAGMA foreign_keys = OFF; PRAGMA legacy_alter_table = ON;');
+    raw.exec('BEGIN IMMEDIATE');
+    try {
+      const add = [
+        ['user_outlets', 'shift_no', 'INTEGER CHECK (shift_no IS NULL OR shift_no IN (1,2))'],
+        ['task_templates', 'default_shift_no', 'INTEGER CHECK (default_shift_no IS NULL OR default_shift_no IN (1,2))'],
+        ['task_submissions', 'shift_no', 'INTEGER'],
+      ];
+      for (const [t, c, def] of add) if (!hasColumn(db, t, c)) raw.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${def}`);
+      for (const t of Object.keys(V1_COLUMNS)) raw.exec(`ALTER TABLE ${t} RENAME TO _v1_${t}`);
+      raw.exec(schema);
+      for (const [t, cols] of Object.entries(V1_COLUMNS)) raw.exec(`INSERT INTO ${t} (${cols}) SELECT ${cols} FROM _v1_${t}`);
+      for (const t of Object.keys(V1_COLUMNS).reverse()) raw.exec(`DROP TABLE _v1_${t}`);
+      raw.exec(schema); // index yang sebelumnya menempel pada tabel lama
+      const bad = raw.prepare('PRAGMA foreign_key_check').all();
+      if (bad.length) throw new Error(`Migrasi v2 gagal: ${bad.length} pelanggaran foreign key`);
+      raw.exec('COMMIT');
+    } catch (e) {
+      raw.exec('ROLLBACK');
+      throw e;
+    } finally {
+      raw.exec('PRAGMA legacy_alter_table = OFF; PRAGMA foreign_keys = ON;');
+    }
+  }
+  // Izin baru untuk peran yang sudah ada (database lama).
+  const grants = { crew: ['handover.create'], kasir: ['handover.create'], pic: ['handover.create'], head: ['handover.create', 'shift.manage'], spv: ['handover.create', 'shift.manage'], admin: ['handover.create', 'shift.manage'] };
+  for (const [role, perms] of Object.entries(grants)) {
+    const exists = raw.prepare('SELECT COUNT(*) AS c FROM role_permissions WHERE role_code = ?').get(role).c;
+    if (exists) for (const p of perms) raw.prepare('INSERT OR IGNORE INTO role_permissions (role_code, permission) VALUES (?,?)').run(role, p);
+  }
+  raw.exec('PRAGMA user_version = 2');
 }
 
 function clean(params) {

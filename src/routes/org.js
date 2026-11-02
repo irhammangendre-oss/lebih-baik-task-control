@@ -7,6 +7,7 @@ const v = require('../validate');
 const access = require('../access');
 const { audit } = require('../services/audit');
 const { isValidTz } = require('../time');
+const { ensureOutletShifts } = require('../services/shifts');
 
 module.exports = (db) => {
   const r = express.Router();
@@ -67,8 +68,12 @@ module.exports = (db) => {
   r.post('/org/outlets', requirePerm('org.manage'), (req, res) => {
     needAll(req);
     const d = outletInput(req.body || {});
-    const id = wrapUnique(() => Number(db.run('INSERT INTO outlets (brand_id, code, name, timezone, active, created_at) VALUES (?,?,?,?,?,?)',
-      d.brand_id, d.code, d.name, d.timezone, d.active, clock.nowIso()).lastInsertRowid), 'Kode outlet sudah dipakai.');
+    const id = db.tx(() => {
+      const oid = wrapUnique(() => Number(db.run('INSERT INTO outlets (brand_id, code, name, timezone, active, created_at) VALUES (?,?,?,?,?,?)',
+        d.brand_id, d.code, d.name, d.timezone, d.active, clock.nowIso()).lastInsertRowid), 'Kode outlet sudah dipakai.');
+      ensureOutletShifts(db, oid);
+      return oid;
+    });
     audit(db, req.user.id, 'outlet.create', 'outlet', id, d);
     res.status(201).json(db.get('SELECT * FROM outlets WHERE id = ?', id));
   });
@@ -95,8 +100,8 @@ module.exports = (db) => {
         u.reports_to_user_id, s.name AS reports_to_name, u.active, u.created_at
       FROM users u JOIN roles r ON r.code = u.role_code LEFT JOIN users s ON s.id = u.reports_to_user_id
       ORDER BY u.active DESC, r.level DESC, u.name`);
-    const links = db.all(`SELECT uo.user_id, uo.outlet_id, uo.team, o.name AS outlet_name FROM user_outlets uo JOIN outlets o ON o.id = uo.outlet_id`);
-    for (const u of users) u.outlets = links.filter((l) => l.user_id === u.id).map(({ outlet_id, team, outlet_name }) => ({ outlet_id, team, outlet_name }));
+    const links = db.all(`SELECT uo.user_id, uo.outlet_id, uo.team, uo.shift_no, o.name AS outlet_name FROM user_outlets uo JOIN outlets o ON o.id = uo.outlet_id`);
+    for (const u of users) u.outlets = links.filter((l) => l.user_id === u.id).map(({ outlet_id, team, shift_no, outlet_name }) => ({ outlet_id, team, shift_no, outlet_name }));
     let out = users;
     if (!all(req)) out = out.filter((u) => u.id === req.user.id || u.outlets.some((o) => req.user.outletIds.has(o.outlet_id)));
     if (outletId) out = out.filter((u) => u.outlets.some((o) => o.outlet_id === Number(outletId)));
@@ -129,7 +134,11 @@ module.exports = (db) => {
     if (d.reports_to_user_id && !db.get('SELECT 1 FROM users WHERE id = ?', d.reports_to_user_id)) throw bad('Atasan tidak valid.');
     let outlets = null;
     if (Array.isArray(b.outlets)) {
-      outlets = b.outlets.map((o) => ({ outlet_id: v.int(o.outlet_id, 'Outlet'), team: v.str(o.team, 'Tim', { max: 60 }) }));
+      outlets = b.outlets.map((o) => {
+        const shift = o.shift_no === undefined || o.shift_no === null || o.shift_no === '' ? null : Number(o.shift_no);
+        if (shift !== null && shift !== 1 && shift !== 2) throw bad('Shift harus 1 atau 2.');
+        return { outlet_id: v.int(o.outlet_id, 'Outlet'), team: v.str(o.team, 'Tim', { max: 60 }), shift_no: shift };
+      });
       for (const o of outlets) access.assertOutlet(req.user, o.outlet_id);
     }
     return { d, outlets };
@@ -138,13 +147,13 @@ module.exports = (db) => {
   function saveOutlets(req, userId, outlets) {
     if (!outlets) return;
     // User tanpa scope.all hanya mengubah penempatan pada outlet dalam cakupannya.
-    const keep = all(req) ? [] : db.all('SELECT outlet_id, team FROM user_outlets WHERE user_id = ?', userId).filter((o) => !req.user.outletIds.has(o.outlet_id));
+    const keep = all(req) ? [] : db.all('SELECT outlet_id, team, shift_no FROM user_outlets WHERE user_id = ?', userId).filter((o) => !req.user.outletIds.has(o.outlet_id));
     db.run('DELETE FROM user_outlets WHERE user_id = ?', userId);
     const seen = new Set();
     for (const o of [...keep, ...outlets]) {
       if (seen.has(o.outlet_id)) continue;
       seen.add(o.outlet_id);
-      db.run('INSERT INTO user_outlets (user_id, outlet_id, team) VALUES (?,?,?)', userId, o.outlet_id, o.team || null);
+      db.run('INSERT INTO user_outlets (user_id, outlet_id, team, shift_no) VALUES (?,?,?,?)', userId, o.outlet_id, o.team || null, o.shift_no ?? null);
     }
   }
 

@@ -141,3 +141,13 @@ export function mount(el, ...children) {
   append(el, children);
   return el;
 }
+
+/** Label shift & tanda tugas dioper dari shift sebelumnya. */
+export function shiftChips(t) {
+  return [
+    t.shift_no ? h('span', { class: 'chip' }, `Shift ${t.shift_no}`) : null,
+    t.is_carried_over ? h('span', { class: 'chip s-perlu_perbaikan' }, `Lanjutan dari Shift ${t.shift_no}`) : null,
+    t.from_previous_day && !t.is_carried_over ? h('span', { class: 'chip s-perlu_perbaikan' }, 'Sisa kemarin') : null,
+    t.completed_after_shift && !['belum', 'perlu_perbaikan'].includes(t.status) ? h('span', { class: 'chip' }, 'Diselesaikan shift berikutnya') : null,
+  ];
+}

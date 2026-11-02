@@ -15,6 +15,8 @@ const PERMISSIONS = {
   'escalation.manage': 'Mengatur aturan eskalasi',
   'role.manage': 'Mengatur izin per peran',
   'audit.view': 'Melihat log audit',
+  'handover.create': 'Membuat / menerima serah terima shift',
+  'shift.manage': 'Mengatur jam shift & jadwal shift karyawan',
   'scope.all': 'Akses data semua outlet',
 };
 
@@ -30,11 +32,11 @@ const ROLES = [
 // Default saja; dapat diubah Management lewat menu "Peran & Izin".
 // Catatan: Kasir TIDAK otomatis membawahi Crew.
 const DEFAULT_ROLE_PERMISSIONS = {
-  crew: ['task.complete', 'checklist.view'],
-  kasir: ['task.complete', 'checklist.view'],
-  pic: ['task.complete', 'checklist.view', 'monitor.team', 'task.reopen'],
-  head: ['task.complete', 'task.complete_any', 'checklist.view', 'monitor.team', 'monitor.outlet', 'task.verify', 'task.reopen'],
-  spv: ['checklist.view', 'monitor.team', 'monitor.outlet', 'monitor.multi', 'task.verify', 'task.reopen'],
+  crew: ['task.complete', 'checklist.view', 'handover.create'],
+  kasir: ['task.complete', 'checklist.view', 'handover.create'],
+  pic: ['task.complete', 'checklist.view', 'monitor.team', 'task.reopen', 'handover.create'],
+  head: ['task.complete', 'task.complete_any', 'checklist.view', 'monitor.team', 'monitor.outlet', 'task.verify', 'task.reopen', 'handover.create', 'shift.manage'],
+  spv: ['checklist.view', 'monitor.team', 'monitor.outlet', 'monitor.multi', 'task.verify', 'task.reopen', 'handover.create', 'shift.manage'],
   admin: Object.keys(PERMISSIONS),
 };
 

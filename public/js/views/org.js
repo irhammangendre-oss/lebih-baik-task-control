@@ -63,10 +63,12 @@ function userSheet(u, { outlets, users }, reload) {
   const pw = h('input', { type: 'password', autocomplete: 'new-password', placeholder: u ? 'Kosongkan jika tidak diubah' : 'Minimal 8 karakter' });
   const active = h('input', { type: 'checkbox', checked: u ? !!u.active : true });
   const current = new Map((u?.outlets || []).map((o) => [o.outlet_id, o.team]));
+  const currentShift = new Map((u?.outlets || []).map((o) => [o.outlet_id, o.shift_no]));
   const rows = outlets.filter((o) => o.active).map((o) => {
     const cb = h('input', { type: 'checkbox', value: o.id, checked: current.has(o.id) });
     const team = h('input', { type: 'text', value: current.get(o.id) || '', placeholder: 'Tim/area (opsional)' });
-    return { o, cb, team, el: h('div', { class: 'card', style: { padding: '8px 10px', marginBottom: '6px' } }, h('label', { class: 'check' }, cb, h('b', {}, o.name)), team) };
+    const shift = select([['', 'Shift fleksibel'], [1, 'Shift 1'], [2, 'Shift 2']], currentShift.get(o.id), { 'aria-label': 'Shift' });
+    return { o, cb, team, shift, el: h('div', { class: 'card', style: { padding: '8px 10px', marginBottom: '6px' } }, h('label', { class: 'check' }, cb, h('b', {}, o.name)), h('div', { class: 'grid2' }, team, shift)) };
   });
   const s = sheet(u ? 'Ubah karyawan' : 'Karyawan baru', h('div', {},
     field('Nama', name), field('Username (untuk login)', username), field('Peran', role),
@@ -77,7 +79,7 @@ function userSheet(u, { outlets, users }, reload) {
     h('button', { class: 'btn primary big block', onclick: async () => {
       const body = {
         name: name.value, username: username.value, role_code: role.value, reports_to_user_id: reports.value ? Number(reports.value) : null,
-        active: active.checked, outlets: rows.filter((r) => r.cb.checked).map((r) => ({ outlet_id: r.o.id, team: r.team.value })),
+        active: active.checked, outlets: rows.filter((r) => r.cb.checked).map((r) => ({ outlet_id: r.o.id, team: r.team.value, shift_no: r.shift.value ? Number(r.shift.value) : null })),
       };
       try {
         if (u) {

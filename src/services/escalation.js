@@ -2,6 +2,7 @@
 const clock = require('../clock');
 const { addDays, localDate } = require('../time');
 const { notify } = require('./notify');
+const { effectiveShift } = require('./shifts');
 
 function hhmm(iso, tz) {
   return new Intl.DateTimeFormat('id-ID', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
@@ -14,8 +15,12 @@ function usersAtOutlet(db, outletId, where = '', ...params) {
 
 function assigneeIds(db, inst) {
   if (inst.assignee_type === 'user') return [inst.assignee_user_id];
-  if (inst.assignee_type === 'role') return usersAtOutlet(db, inst.outlet_id, 'AND u.role_code = ?', inst.assignee_role);
-  return usersAtOutlet(db, inst.outlet_id, 'AND uo.team = ?', inst.assignee_team);
+  const ids = inst.assignee_type === 'role' ? usersAtOutlet(db, inst.outlet_id, 'AND u.role_code = ?', inst.assignee_role)
+    : inst.assignee_type === 'team' ? usersAtOutlet(db, inst.outlet_id, 'AND uo.team = ?', inst.assignee_team)
+      : usersAtOutlet(db, inst.outlet_id);
+  if (!inst.shift_no) return ids;
+  // Hanya karyawan di shift tugas tsb (karyawan tanpa jadwal shift ikut dianggap).
+  return ids.filter((id) => { const s = effectiveShift(db, id, inst.outlet_id, inst.business_date); return s === null || s === inst.shift_no; });
 }
 
 function picIds(db, inst) {

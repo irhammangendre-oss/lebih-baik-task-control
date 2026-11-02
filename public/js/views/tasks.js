@@ -1,5 +1,6 @@
 import { api } from '../api.js';
-import { h, clear, statusChip, lateChip, fmtDue, fmtTime, loading, errorBox, toast, mount } from '../ui.js';
+import { h, clear, statusChip, lateChip, fmtDue, fmtTime, loading, errorBox, toast, mount, shiftChips } from '../ui.js';
+import { openHandover } from './handover.js';
 import { state } from '../state.js';
 import { openInstance, completeFlow } from './instance.js';
 
@@ -22,7 +23,7 @@ export function taskCard(t, reload, { showButton = true } = {}) {
       'Penanggung jawab', h('b', {}, t.assignee_label),
       'Foto', h('b', {}, t.requires_photo ? '📷 Wajib foto' : 'Tidak perlu'),
       t.completed_by_name ? 'Oleh' : null, t.completed_by_name ? h('b', {}, `${t.completed_by_name} · ${fmtTime(t.completed_at, t.timezone)}`) : null),
-    h('div', { class: 'tags', style: { marginBottom: btn ? '10px' : '0' } }, lateChip(t), t.is_critical ? h('span', { class: 'chip crit' }, 'Kritis') : null,
+    h('div', { class: 'tags', style: { marginBottom: btn ? '10px' : '0' } }, shiftChips(t), lateChip(t), t.is_critical ? h('span', { class: 'chip crit' }, 'Kritis') : null,
       t.requires_verification ? h('span', { class: 'chip' }, 'Perlu verifikasi') : null),
     btn);
 }
@@ -32,13 +33,20 @@ export async function renderMyTasks(el) {
   let data;
   try { data = await api('/my-tasks'); } catch (e) { return errorBox(el, e, () => renderMyTasks(el)); }
   const reload = () => renderMyTasks(el);
-  const { tasks, summary } = data;
+  const { tasks, summary, shifts = [], handovers = [] } = data;
+  const shiftLine = shifts.length ? h('div', { class: 'small muted', style: { margin: '-6px 0 12px' } }, shifts.map((s) =>
+    `${shifts.length > 1 ? `${s.outlet_name}: ` : ''}${s.my_shift ? `Anda Shift ${s.my_shift}` : 'Shift fleksibel'}${s.current ? ` · sekarang Shift ${s.current.shift_no} (s.d. ${fmtTime(s.current.end_at, s.timezone)})` : ' · di luar jam shift'}`).join(' | ')) : null;
+  const banners = handovers.map((x) => h('button', { class: `notice ${x.acknowledged_at ? 'info' : 'warn'}`, style: { display: 'block', width: '100%', textAlign: 'left', border: 0, marginBottom: '10px', cursor: 'pointer' }, onclick: () => openHandover(x.id, reload) },
+    h('b', {}, x.acknowledged_at ? '📝 Serah terima' : '📝 Serah terima baru'), ` dari Shift ${x.from_shift} (${x.created_by_name})`,
+    x.open_items ? ` · ${x.open_items} tugas belum selesai` : '', h('span', { style: { float: 'right' } }, 'Lihat ›')));
   const now = tasks.filter((t) => !t.is_upcoming && ['belum', 'perlu_perbaikan'].includes(t.status));
   const later = tasks.filter((t) => t.is_upcoming && ['belum', 'perlu_perbaikan'].includes(t.status));
   const done = tasks.filter((t) => !['belum', 'perlu_perbaikan'].includes(t.status));
   const section = (title, list, opts) => (list.length ? [h('h2', {}, `${title} (${list.length})`), ...list.map((t) => taskCard(t, reload, opts))] : []);
   mount(el, 
     h('h1', {}, `Halo, ${state.me.name.split(' ')[0]} 👋`),
+    shiftLine,
+    banners,
     h('div', { class: 'summary' },
       h('div', { class: 'stat' }, h('div', { class: 'n' }, summary.total), h('div', { class: 'l' }, 'Tugas saat ini')),
       h('div', { class: 'stat good' }, h('div', { class: 'n' }, summary.done), h('div', { class: 'l' }, 'Selesai')),

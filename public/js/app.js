@@ -8,12 +8,16 @@ import { renderTemplates, renderTemplateDetail } from './views/library.js';
 import { renderOrg } from './views/org.js';
 import { renderEscalation, renderRoles, renderAudit, renderAccount } from './views/settings.js';
 import { openInstance } from './views/instance.js';
+import { renderHandovers } from './views/handover.js';
+import { renderShiftAdmin } from './views/shiftadmin.js';
 
 const view = document.getElementById('view');
 
 const routes = [
   { re: /^\/tugas$/, tab: 'tugas', render: renderMyTasks },
   { re: /^\/checklist$/, tab: 'checklist', render: renderChecklist, perm: ['checklist.view'] },
+  { re: /^\/serah-terima$/, tab: 'checklist', render: renderHandovers, perm: ['checklist.view', 'handover.create'] },
+  { re: /^\/kelola\/shift$/, render: renderShiftAdmin, perm: ['shift.manage'] },
   { re: /^\/monitoring$/, tab: 'monitoring', render: renderMonitoring, perm: ['monitor.team', 'monitor.outlet', 'monitor.multi', 'monitor.all'] },
   { re: /^\/monitoring\/outlet\/(\d+)$/, tab: 'monitoring', render: renderOutletDetail, perm: ['monitor.team', 'monitor.outlet', 'monitor.multi', 'monitor.all'] },
   { re: /^\/kelola\/library$/, render: renderTemplates, perm: ['template.manage'] },
@@ -86,6 +90,8 @@ function openMenu() {
       h('div', { class: 'task-title' }, state.me.name),
       h('div', { class: 'muted small' }, `${state.me.role_name} · ${state.me.outlets.map((o) => o.outlet_name).join(', ') || 'Belum ditempatkan di outlet'}`)),
     h('nav', { class: 'menu-list' },
+      item('#/serah-terima', '📝', 'Serah Terima Shift', canAny('checklist.view', 'handover.create')),
+      item('#/kelola/shift', '🕒', 'Shift & Jadwal Karyawan', can('shift.manage')),
       item('#/kelola/library', '📚', 'Task Library & Penugasan', can('template.manage')),
       item('#/kelola/organisasi', '🏪', 'Brand, Outlet & Karyawan', can('org.manage')),
       item('#/kelola/eskalasi', '⏰', 'Aturan Eskalasi', can('escalation.manage')),

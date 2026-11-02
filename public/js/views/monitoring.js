@@ -2,7 +2,7 @@ import { api } from '../api.js';
 import { h, clear, loading, errorBox, select, statusChip, lateChip, fmtTime, fmtDateTime, fmtDate, STATUS_LABEL, CATEGORY_LABEL, mount } from '../ui.js';
 import { openInstance } from './instance.js';
 
-const f = { date: '', brand_id: '', outlet_id: '', status: '' };
+const f = { date: '', brand_id: '', outlet_id: '', status: '', shift: '' };
 const LEVEL_LABEL = { team: 'Area / shift Anda', outlet: 'Outlet Anda', multi: 'Outlet yang Anda awasi', all: 'Semua brand & outlet' };
 
 function stat(n, label, cls = '', onclick) {
@@ -14,7 +14,7 @@ export function instanceRow(t, reload) {
     h('div', { class: 'grow' },
       h('div', { class: 'ellipsis', style: { fontWeight: 600 } }, t.is_critical ? '⚠ ' : '', t.name),
       h('div', { class: 'small muted ellipsis' },
-        `${t.outlet_name} · ${CATEGORY_LABEL[t.category]} · deadline ${fmtTime(t.due_at, t.timezone)} · ${t.assignee_label}`,
+        `${t.outlet_name} · ${CATEGORY_LABEL[t.category]}${t.shift_no ? ` · S${t.shift_no}` : ''}${t.is_carried_over ? ' (dioper)' : ''} · deadline ${fmtTime(t.due_at, t.timezone)} · ${t.assignee_label}`,
         t.completed_by_name ? ` · oleh ${t.completed_by_name} ${fmtTime(t.completed_at, t.timezone)}` : '',
         t.evidence_count ? ` · 📷${t.evidence_count}` : '',
         t.is_overdue && t.escalation_stage ? ` · eskalasi tahap ${t.escalation_stage}` : '')),
@@ -37,6 +37,7 @@ export async function renderMonitoring(el) {
     h('input', { type: 'date', value: d.date, onchange: set('date'), 'aria-label': 'Tanggal' }),
     select([['', 'Semua status'], ...Object.entries(STATUS_LABEL)], f.status, { onchange: set('status'), 'aria-label': 'Status' }),
     d.brands.length > 1 ? select([['', 'Semua brand'], ...d.brands.map((b) => [b.id, b.name])], f.brand_id, { onchange: set('brand_id'), 'aria-label': 'Brand' }) : null,
+    select([['', 'Semua shift'], ['1', 'Shift 1'], ['2', 'Shift 2']], f.shift, { onchange: set('shift'), 'aria-label': 'Shift' }),
     outlets.length > 1 ? select([['', 'Semua outlet'], ...outlets.map((o) => [o.id, o.name])], f.outlet_id, { onchange: set('outlet_id'), 'aria-label': 'Outlet' }) : null);
 
   const filterStatus = (s) => () => { f.status = f.status === s ? '' : s; reload(); };

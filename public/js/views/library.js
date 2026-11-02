@@ -81,6 +81,7 @@ export async function renderTemplateDetail(el, { params }) {
   const photo = h('input', { type: 'checkbox', checked: !!t.requires_photo });
   const verif = h('input', { type: 'checkbox', checked: !!t.requires_verification });
   const role = select([['', '— pilih saat menugaskan —'], ...roleOptions()], t.default_assignee_role);
+  const dshift = select([['', 'Tanpa shift (semua shift)'], [1, 'Shift 1'], [2, 'Shift 2']], t.default_shift_no);
   const sop = h('textarea', { value: t.sop_text || '', placeholder: 'Langkah-langkah SOP (opsional)' });
   const refUrl = h('input', { type: 'url', value: t.reference_url || '', placeholder: 'https://… (opsional)' });
   const sched = scheduleFields(t);
@@ -91,6 +92,7 @@ export async function renderTemplateDetail(el, { params }) {
     const body = {
       name: name.value, category: category.value, instructions: instructions.value, is_critical: crit.checked,
       requires_photo: photo.checked, requires_verification: verif.checked, default_assignee_role: role.value || null,
+      default_shift_no: dshift.value ? Number(dshift.value) : null,
       sop_text: sop.value, reference_url: refUrl.value,
       brand_ids: [...brandBox.querySelectorAll('input:checked')].map((i) => Number(i.value)), ...sched.value(),
     };
@@ -120,6 +122,7 @@ export async function renderTemplateDetail(el, { params }) {
       h('label', { class: 'check' }, crit, 'Tugas kritis (keamanan pangan / keamanan) — eskalasi lebih ketat'),
       h('h2', {}, 'Jadwal & deadline default'), sched.el,
       field('Penanggung jawab default', role),
+      field('Shift default', dshift, 'Mis. Opening → Shift 1, Closing → Shift 2.'),
       h('h2', {}, 'Berlaku untuk brand'), h('div', { class: 'small muted' }, 'Kosongkan = boleh dipakai semua brand.'), brandBox,
       h('h2', {}, 'SOP / referensi'), field('Teks SOP', sop), field('Link dokumen SOP', refUrl),
       !isNew ? h('div', { class: 'row wrap', style: { marginBottom: '12px' } },
@@ -138,7 +141,8 @@ export async function renderTemplateDetail(el, { params }) {
         t.active ? h('button', { class: 'btn primary', onclick: () => assignSheet(t, null, reload) }, '+ Tugaskan ke outlet') : null),
       h('div', { class: 'card', style: { marginTop: '8px' } }, t.assignments.length ? t.assignments.map((a) => {
         const s = a.schedules.find((x) => x.active) || a.schedules.at(-1);
-        const who = a.assignee_type === 'user' ? `👤 ${a.assignee_user_name} (individu)` : a.assignee_type === 'team' ? `👥 Tim ${a.assignee_team} (bersama)` : `👥 Semua ${a.assignee_role_name} (bersama)`;
+        const who = (a.assignee_type === 'user' ? `👤 ${a.assignee_user_name} (individu)` : a.assignee_type === 'team' ? `👥 Tim ${a.assignee_team} (bersama)`
+          : a.assignee_type === 'shift' ? '👥 Semua karyawan (bersama)' : `👥 Semua ${a.assignee_role_name} (bersama)`) + (a.shift_no ? ` · Shift ${a.shift_no}` : '');
         return h('div', { class: 'list-row', style: { opacity: a.active ? 1 : 0.55 } },
           h('div', { class: 'grow' }, h('b', {}, a.outlet_name), h('div', { class: 'small muted' }, who), h('div', { class: 'small muted' }, scheduleSummary(s))),
           h('div', { class: 'row' },
@@ -157,7 +161,8 @@ async function assignSheet(t, existing, onDone) {
   outlets = outlets.filter((o) => o.active && (!t.brand_ids.length || t.brand_ids.includes(o.brand_id)));
   const outletBox = h('div', {}, outlets.map((o) => h('label', { class: 'check' },
     h('input', { type: 'checkbox', value: o.id, checked: existing ? existing.outlet_id === o.id : false, disabled: !!existing }), `${o.name}`, h('span', { class: 'muted small' }, ` · ${o.brand_name}`))));
-  const type = select([['role', 'Semua karyawan dengan peran tertentu (bersama)'], ['team', 'Tim / area tertentu (bersama)'], ['user', 'Karyawan tertentu (individu)']], existing?.assignee_type || 'role');
+  const type = select([['role', 'Semua karyawan dengan peran tertentu (bersama)'], ['team', 'Tim / area tertentu (bersama)'], ['shift', 'Semua karyawan di shift tertentu (bersama)'], ['user', 'Karyawan tertentu (individu)']], existing?.assignee_type || 'role');
+  const shift = select([['', 'Tanpa shift (semua shift)'], [1, 'Shift 1'], [2, 'Shift 2']], existing ? existing.shift_no : t.default_shift_no);
   const role = select(roleOptions(), existing?.assignee_role || t.default_assignee_role || 'crew');
   const team = h('input', { type: 'text', value: existing?.assignee_team || '', placeholder: 'mis. Dapur, Bar, Shift Pagi', list: 'teamList' });
   const teamList = h('datalist', { id: 'teamList' });
@@ -191,10 +196,11 @@ async function assignSheet(t, existing, onDone) {
   const s = sheet(existing ? `Ubah penugasan · ${existing.outlet_name}` : `Tugaskan: ${t.name}`, h('div', {},
     h('h2', {}, 'Outlet'), outlets.length ? outletBox : h('div', { class: 'notice warn' }, 'Tidak ada outlet aktif yang sesuai brand template.'),
     h('h2', {}, 'Penanggung jawab'), field('Jenis', type), roleWrap, teamWrap, userWrap,
+    field('Shift', shift, 'Tugas peran/tim bershift hanya untuk karyawan di shift itu. Jika belum selesai saat shift berakhir, tugas dioper ke shift berikutnya.'),
     h('h2', {}, 'Jadwal'), h('label', { class: 'check' }, useDefault, 'Pakai jadwal default template'), sched.el,
     h('button', { class: 'btn primary big block', onclick: async () => {
       const body = {
-        assignee_type: type.value, assignee_role: role.value, assignee_team: team.value, assignee_user_id: user.value ? Number(user.value) : null,
+        assignee_type: type.value, assignee_role: role.value, shift_no: shift.value ? Number(shift.value) : null, assignee_team: team.value, assignee_user_id: user.value ? Number(user.value) : null,
         schedule: useDefault.checked ? undefined : sched.value(),
       };
       try {

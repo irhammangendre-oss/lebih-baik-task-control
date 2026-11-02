@@ -47,12 +47,14 @@ test('tugas tim: hanya anggota tim; PIC memantau area/shift-nya saja', async () 
   const pic2 = await ctx.login('pic2'); // PIC Dapur
   const tplDapur = await createTemplate(admin, { name: 'Bersihkan hood dapur' });
   await assign(admin, tplDapur, ctx.demo.outlets.k1, { assignee_type: 'team', assignee_team: 'Dapur' });
+  const tplBar = await createTemplate(admin, { name: 'Lap mesin espresso' });
+  await assign(admin, tplBar, ctx.demo.outlets.k1, { assignee_type: 'team', assignee_team: 'Bar' });
   const inst = instanceOf(ctx, tplDapur.id, ctx.demo.outlets.k1);
   assert.equal((await crew.post(`/api/instances/${inst.id}/complete`)).status, 403, 'tim Bar tidak boleh');
   const monPic = await pic.get('/api/monitoring');
   assert.equal(monPic.body.level, 'team');
   assert.ok(!monPic.body.instances.some((t) => t.id === inst.id), 'PIC Bar tidak melihat tugas tim Dapur');
-  assert.ok(monPic.body.instances.some((t) => t.assignee_label === 'Tim Bar'), 'PIC Bar melihat tugas tim Bar');
+  assert.ok(monPic.body.instances.some((t) => t.template_id === tplBar.id), 'PIC Bar melihat tugas tim Bar');
   const monPic2 = await pic2.get('/api/monitoring');
   assert.ok(monPic2.body.instances.some((t) => t.id === inst.id));
   assert.deepEqual(monPic.body.by_outlet, [], 'PIC tidak melihat perbandingan outlet');

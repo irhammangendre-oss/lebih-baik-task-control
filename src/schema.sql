@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS user_outlets (
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   outlet_id  INTEGER NOT NULL REFERENCES outlets(id) ON DELETE CASCADE,
   team       TEXT,
+  shift_no   INTEGER CHECK (shift_no IS NULL OR shift_no IN (1,2)),  -- shift tetap karyawan di outlet ini
   PRIMARY KEY (user_id, outlet_id)
 );
 CREATE INDEX IF NOT EXISTS idx_user_outlets_outlet ON user_outlets(outlet_id);
@@ -84,6 +85,7 @@ CREATE TABLE IF NOT EXISTS task_templates (
   interval_minutes       INTEGER CHECK (interval_minutes IS NULL OR interval_minutes >= 15),
   due_after_minutes      INTEGER CHECK (due_after_minutes IS NULL OR due_after_minutes > 0),
   default_assignee_role  TEXT REFERENCES roles(code),
+  default_shift_no       INTEGER CHECK (default_shift_no IS NULL OR default_shift_no IN (1,2)),
   active                 INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
   created_by             INTEGER REFERENCES users(id),
   created_at             TEXT NOT NULL,
@@ -103,10 +105,12 @@ CREATE TABLE IF NOT EXISTS task_assignments (
   template_id       INTEGER NOT NULL REFERENCES task_templates(id),
   outlet_id         INTEGER NOT NULL REFERENCES outlets(id),
   mode              TEXT NOT NULL CHECK (mode IN ('individual','shared')),
-  assignee_type     TEXT NOT NULL CHECK (assignee_type IN ('role','team','user')),
+  assignee_type     TEXT NOT NULL CHECK (assignee_type IN ('role','team','user','shift')),
   assignee_role     TEXT REFERENCES roles(code),
   assignee_team     TEXT,
   assignee_user_id  INTEGER REFERENCES users(id),
+  -- Shift tugas (1/2). Wajib untuk assignee_type='shift'; untuk peran/tim membatasi ke karyawan di shift tsb.
+  shift_no          INTEGER CHECK (shift_no IS NULL OR shift_no IN (1,2)),
   active            INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
   created_by        INTEGER REFERENCES users(id),
   created_at        TEXT NOT NULL,
@@ -114,7 +118,8 @@ CREATE TABLE IF NOT EXISTS task_assignments (
   CHECK (
     (assignee_type = 'role' AND assignee_role IS NOT NULL AND mode = 'shared') OR
     (assignee_type = 'team' AND assignee_team IS NOT NULL AND mode = 'shared') OR
-    (assignee_type = 'user' AND assignee_user_id IS NOT NULL AND mode = 'individual')
+    (assignee_type = 'user' AND assignee_user_id IS NOT NULL AND mode = 'individual') OR
+    (assignee_type = 'shift' AND shift_no IS NOT NULL AND mode = 'shared')
   )
 );
 CREATE INDEX IF NOT EXISTS idx_assignments_outlet ON task_assignments(outlet_id);
@@ -165,10 +170,12 @@ CREATE TABLE IF NOT EXISTS task_instances (
   requires_photo         INTEGER NOT NULL DEFAULT 0,
   requires_verification  INTEGER NOT NULL DEFAULT 0,
   mode                   TEXT NOT NULL CHECK (mode IN ('individual','shared')),
-  assignee_type          TEXT NOT NULL CHECK (assignee_type IN ('role','team','user')),
+  assignee_type          TEXT NOT NULL CHECK (assignee_type IN ('role','team','user','shift')),
   assignee_role          TEXT,
   assignee_team          TEXT,
   assignee_user_id       INTEGER REFERENCES users(id),
+  shift_no               INTEGER CHECK (shift_no IS NULL OR shift_no IN (1,2)),
+  shift_end_at           TEXT,  -- akhir shift pemilik tugas (snapshot); lewat dari ini = tugas dioper ke shift berikutnya
   status                 TEXT NOT NULL DEFAULT 'belum'
                          CHECK (status IN ('belum','dikerjakan','menunggu_verifikasi','terverifikasi','perlu_perbaikan')),
   completed_by           INTEGER REFERENCES users(id),
@@ -194,7 +201,8 @@ CREATE TABLE IF NOT EXISTS task_submissions (
   submitted_by  INTEGER NOT NULL REFERENCES users(id),
   submitted_at  TEXT NOT NULL,
   note          TEXT,
-  was_late      INTEGER NOT NULL DEFAULT 0 CHECK (was_late IN (0,1))
+  was_late      INTEGER NOT NULL DEFAULT 0 CHECK (was_late IN (0,1)),
+  shift_no      INTEGER  -- shift si pengirim pada hari itu (akuntabilitas)
 );
 CREATE INDEX IF NOT EXISTS idx_submissions_instance ON task_submissions(instance_id);
 
@@ -263,3 +271,60 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
+
+-- ===== Shift & serah terima (v2) =====
+
+-- Setiap outlet punya tepat dua shift standar. Jam dapat berbeda per outlet.
+-- end_time <= start_time berarti shift berakhir keesokan harinya.
+CREATE TABLE IF NOT EXISTS outlet_shifts (
+  outlet_id   INTEGER NOT NULL REFERENCES outlets(id) ON DELETE CASCADE,
+  shift_no    INTEGER NOT NULL CHECK (shift_no IN (1,2)),
+  start_time  TEXT NOT NULL,
+  end_time    TEXT NOT NULL,
+  updated_by  INTEGER REFERENCES users(id),
+  updated_at  TEXT NOT NULL,
+  PRIMARY KEY (outlet_id, shift_no),
+  CHECK (start_time <> end_time)
+);
+
+-- Pengecualian jadwal per tanggal (mis. tukar shift). Tanpa baris = pakai user_outlets.shift_no.
+CREATE TABLE IF NOT EXISTS shift_rosters (
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  outlet_id   INTEGER NOT NULL REFERENCES outlets(id) ON DELETE CASCADE,
+  work_date   TEXT NOT NULL,
+  shift_no    INTEGER NOT NULL CHECK (shift_no IN (1,2)),
+  updated_by  INTEGER REFERENCES users(id),
+  updated_at  TEXT NOT NULL,
+  PRIMARY KEY (user_id, outlet_id, work_date)
+);
+CREATE INDEX IF NOT EXISTS idx_rosters_outlet_date ON shift_rosters(outlet_id, work_date);
+
+-- Serah terima shift: satu catatan per outlet, tanggal bisnis, dan shift asal.
+CREATE TABLE IF NOT EXISTS shift_handovers (
+  id                INTEGER PRIMARY KEY,
+  outlet_id         INTEGER NOT NULL REFERENCES outlets(id),
+  business_date     TEXT NOT NULL,
+  from_shift        INTEGER NOT NULL CHECK (from_shift IN (1,2)),
+  to_shift          INTEGER NOT NULL CHECK (to_shift IN (1,2)),
+  to_business_date  TEXT NOT NULL,
+  stock_issues      TEXT,
+  equipment_issues  TEXT,
+  notes             TEXT,
+  created_by        INTEGER NOT NULL REFERENCES users(id),
+  created_at        TEXT NOT NULL,
+  updated_by        INTEGER REFERENCES users(id),
+  updated_at        TEXT NOT NULL,
+  acknowledged_by   INTEGER REFERENCES users(id),
+  acknowledged_at   TEXT,
+  UNIQUE (outlet_id, business_date, from_shift),
+  CHECK (from_shift <> to_shift)
+);
+CREATE INDEX IF NOT EXISTS idx_handovers_to ON shift_handovers(outlet_id, to_business_date, to_shift);
+
+-- Snapshot tugas yang belum selesai saat serah terima dibuat.
+CREATE TABLE IF NOT EXISTS shift_handover_items (
+  handover_id         INTEGER NOT NULL REFERENCES shift_handovers(id) ON DELETE CASCADE,
+  instance_id         INTEGER NOT NULL REFERENCES task_instances(id),
+  status_at_handover  TEXT NOT NULL,
+  PRIMARY KEY (handover_id, instance_id)
+);
