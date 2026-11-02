@@ -189,3 +189,17 @@ test('menghentikan penugasan menghapus tugas yang belum jatuh tempo, histori tet
   ctx.jobs();
   assert.equal(ctx.db.get('SELECT COUNT(*) AS c FROM task_instances WHERE assignment_id = ?', a.id).c, 2, 'tidak digenerate ulang');
 });
+
+test('fitur notifikasi dimatikan: tidak ada notifikasi, tapi eskalasi tetap tercatat untuk Monitoring', async () => {
+  const ctx = setup({ notifications: false });
+  const crew = await ctx.login('crew');
+  assert.equal(crew.me.features.notifications, false);
+  ctx.setTime('2026-11-02', '23:59');
+  ctx.jobs();
+  assert.equal(ctx.db.get('SELECT COUNT(*) AS c FROM notifications').c, 0);
+  assert.ok(ctx.db.get('SELECT COUNT(*) AS c FROM task_instances WHERE escalation_stage > 0').c > 0);
+  const head = await ctx.login('head');
+  const mon = await head.get('/api/monitoring');
+  assert.ok(mon.body.overdue.length > 0);
+  assert.ok(mon.body.overdue.some((t) => t.escalation_stage > 0));
+});

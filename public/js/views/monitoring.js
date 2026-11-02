@@ -16,7 +16,8 @@ export function instanceRow(t, reload) {
       h('div', { class: 'small muted ellipsis' },
         `${t.outlet_name} · ${CATEGORY_LABEL[t.category]} · deadline ${fmtTime(t.due_at, t.timezone)} · ${t.assignee_label}`,
         t.completed_by_name ? ` · oleh ${t.completed_by_name} ${fmtTime(t.completed_at, t.timezone)}` : '',
-        t.evidence_count ? ` · 📷${t.evidence_count}` : '')),
+        t.evidence_count ? ` · 📷${t.evidence_count}` : '',
+        t.is_overdue && t.escalation_stage ? ` · eskalasi tahap ${t.escalation_stage}` : '')),
     h('div', { style: { textAlign: 'right' } }, statusChip(t), h('div', {}, lateChip(t))));
 }
 

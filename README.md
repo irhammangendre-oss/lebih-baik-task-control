@@ -56,6 +56,7 @@ Untuk produksi **jangan** pakai `seed:demo`. Jalankan `npm run seed` (atau langs
 | `UPLOAD_DIR` | `data/uploads` | foto bukti & gambar referensi (privat, di luar folder publik) |
 | `ADMIN_PASSWORD` | acak | password admin pertama |
 | `JOB_INTERVAL_SECONDS` | `60` | interval generate tugas + eskalasi; `0` = matikan (pakai cron) |
+| `NOTIFICATIONS_ENABLED` | `false` | fitur notifikasi **dimatikan** secara default. Set `true` untuk menyalakan lonceng 🔔 in-app & webhook. Saat mati, tahap eskalasi tetap dihitung & tampil di Monitoring |
 | `NOTIFY_WEBHOOK_URL` | – | opsional: setiap notifikasi baru di-POST (JSON) ke URL ini, mis. gateway WhatsApp/Telegram |
 | `MAX_UPLOAD_MB` | `8` | ukuran maks per foto (foto dikompres di HP ke ±1600px sebelum upload) |
 | `SESSION_DAYS` | `14` | umur sesi login |
@@ -71,7 +72,7 @@ Untuk produksi **jangan** pakai `seed:demo`. Jalankan `npm run seed` (atau langs
    ```
    * * * * * cd /opt/lebih-baik && DB_PATH=... UPLOAD_DIR=... npm run jobs >> jobs.log 2>&1
    ```
-7. Notifikasi saat ini **in-app** (ikon 🔔). Untuk WhatsApp/Telegram, isi `NOTIFY_WEBHOOK_URL` dengan endpoint gateway pilihan Anda (perlu akun provider — keputusan Anda).
+7. Notifikasi **dimatikan secara default** (`NOTIFICATIONS_ENABLED=true` untuk menyalakan; tampil sebagai ikon 🔔 in-app). Untuk WhatsApp/Telegram, isi `NOTIFY_WEBHOOK_URL` dengan endpoint gateway pilihan Anda (perlu akun provider — keputusan Anda).
 
 Contoh unit systemd:
 
@@ -135,7 +136,7 @@ test/                   node:test + supertest
 npm test
 ```
 
-22 tes otomatis, termasuk alur penerimaan lengkap (template → penugasan → checklist → penyelesaian + foto wajib → verifikasi tolak/setujui → eskalasi bertahap tanpa duplikasi → monitoring per peran → histori → isolasi data antar outlet), serta tes izin tim/PIC, tugas individu, aturan kritis, ambang pengulangan, CSRF/sesi, pencegahan eskalasi hak akses, dan idempotensi pembuatan tugas.
+23 tes otomatis, termasuk alur penerimaan lengkap (template → penugasan → checklist → penyelesaian + foto wajib → verifikasi tolak/setujui → eskalasi bertahap tanpa duplikasi → monitoring per peran → histori → isolasi data antar outlet), serta tes izin tim/PIC, tugas individu, aturan kritis, ambang pengulangan, CSRF/sesi, pencegahan eskalasi hak akses, dan idempotensi pembuatan tugas.
 
 ## Batasan MVP & pengembangan berikutnya
 

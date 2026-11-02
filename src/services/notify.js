@@ -7,6 +7,8 @@ const config = require('../config');
  * Jika NOTIFY_WEBHOOK_URL diisi, notifikasi baru juga diteruskan (fire-and-forget) ke webhook tersebut.
  */
 function notify(db, { userId, instanceId = null, kind, stage = null, message, dedupeKey }) {
+  // Fitur notifikasi dimatikan: tidak ada yang disimpan/dikirim. Tahap eskalasi tetap dicatat untuk Monitoring.
+  if (!config.notificationsEnabled) return false;
   const r = db.run(`INSERT OR IGNORE INTO notifications (user_id, instance_id, kind, stage, message, dedupe_key, created_at)
     VALUES (?,?,?,?,?,?,?)`, userId, instanceId, kind, stage, message, dedupeKey, clock.nowIso());
   const inserted = Number(r.changes) === 1;

@@ -9,6 +9,7 @@ export async function renderEscalation(el) {
   const num = (v) => h('input', { type: 'number', min: 0, value: v });
   mount(el, 
     h('h1', {}, 'Aturan Eskalasi'),
+    !state.me.features?.notifications ? h('div', { class: 'notice warn', style: { marginBottom: '12px' } }, 'Fitur notifikasi sedang dimatikan. Tahap eskalasi tetap dihitung dan terlihat di Monitoring, tetapi tidak ada notifikasi yang dikirim.') : null,
     h('div', { class: 'card small', style: { marginBottom: '12px' } },
       h('div', {}, h('b', {}, 'Tahap 1'), ' — tugas terlambat: notifikasi ke karyawan yang ditugaskan + PIC.'),
       h('div', {}, h('b', {}, 'Tahap 2'), ' — masih belum selesai: notifikasi ke Head / Store Leader.'),
@@ -34,7 +35,7 @@ export async function renderEscalation(el) {
         } }, 'Simpan'));
     }),
     h('button', { class: 'btn block', onclick: async () => {
-      try { const r = await api('/admin/run-jobs', { method: 'POST' }); toast(`Selesai: ${r.created} tugas baru, ${r.notified} notifikasi.`); } catch (e) { toast(e.message); }
+      try { const r = await api('/admin/run-jobs', { method: 'POST' }); toast(`Selesai: ${r.created} tugas baru diperiksa.`); } catch (e) { toast(e.message); }
     } }, 'Jalankan pengecekan sekarang'));
 }
 

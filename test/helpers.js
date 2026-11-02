@@ -8,6 +8,7 @@ process.env.UPLOAD_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'lb-test-uploads-
 process.env.JOB_INTERVAL_SECONDS = '0';
 
 const request = require('supertest');
+const config = require('../src/config');
 const clock = require('../src/clock');
 const { openDb } = require('../src/db');
 const { createApp } = require('../src/app');
@@ -21,7 +22,8 @@ const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]), B
 /** WIB (UTC+7) jam lokal -> ISO UTC pada tanggal tertentu. */
 const wib = (date, hhmm) => new Date(`${date}T${hhmm}:00+07:00`);
 
-function setup({ date = '2026-11-02', time = '08:00' } = {}) {
+function setup({ date = '2026-11-02', time = '08:00', notifications = true } = {}) {
+  config.notificationsEnabled = notifications;
   let now = wib(date, time).getTime();
   clock.set(() => now);
   const db = openDb(':memory:');

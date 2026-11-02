@@ -44,8 +44,11 @@ async function route() {
   await r.render(view, { params, query });
 }
 
+const notifOn = () => !!state.me?.features?.notifications;
+
 function setChrome(loggedIn) {
   document.getElementById('topbar').hidden = !loggedIn;
+  document.getElementById('bellBtn').hidden = !loggedIn || !notifOn();
   document.getElementById('bottomnav').hidden = !loggedIn;
   if (loggedIn) {
     const mon = document.querySelector('[data-tab=monitoring]');
@@ -93,7 +96,7 @@ function openMenu() {
 }
 
 async function refreshBell() {
-  if (!state.me) return;
+  if (!state.me || !notifOn()) return null;
   try {
     const n = await api('/notifications');
     const b = document.getElementById('bellBadge');

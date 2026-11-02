@@ -5,6 +5,7 @@ const { audit } = require('../services/audit');
 const { HttpError } = require('../errors');
 const { PERMISSIONS, CATEGORIES, STATUS } = require('../constants');
 const { monitorLevel } = require('../access');
+const config = require('../config');
 
 // Pembatas percobaan login sederhana (in-memory).
 const attempts = new Map();
@@ -25,6 +26,7 @@ function serializeMe(db, user) {
   return {
     id: user.id, name: user.name, username: user.username, role_code: user.role_code, role_name: user.role_name,
     permissions: [...user.perms], outlets: user.outlets, monitor_level: monitorLevel(user),
+    features: { notifications: config.notificationsEnabled },
     meta: { roles, permissions: PERMISSIONS, categories: CATEGORIES, statuses: STATUS },
   };
 }

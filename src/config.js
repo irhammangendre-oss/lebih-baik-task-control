@@ -10,6 +10,8 @@ module.exports = {
   sessionDays: Number(process.env.SESSION_DAYS || 14),
   // Interval job internal (generate tugas + eskalasi). 0 = matikan (pakai `npm run jobs` via cron).
   jobIntervalSeconds: Number(process.env.JOB_INTERVAL_SECONDS ?? 60),
+  // Fitur notifikasi (lonceng in-app + webhook). Default MATI; set NOTIFICATIONS_ENABLED=true untuk menyalakan.
+  notificationsEnabled: process.env.NOTIFICATIONS_ENABLED === 'true',
   // Opsional: URL webhook untuk meneruskan notifikasi eskalasi (WhatsApp/Telegram gateway, dll.)
   notifyWebhookUrl: process.env.NOTIFY_WEBHOOK_URL || '',
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 8),
