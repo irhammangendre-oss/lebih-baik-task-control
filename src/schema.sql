@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
   name                TEXT NOT NULL,
   username            TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash       TEXT NOT NULL,
+  pin_hash            TEXT,  -- PIN 6 angka (opsional) untuk login cepat karyawan outlet
   role_code           TEXT NOT NULL REFERENCES roles(code),
   reports_to_user_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
   active              INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),

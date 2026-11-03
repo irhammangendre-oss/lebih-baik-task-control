@@ -14,6 +14,8 @@ module.exports = {
   notificationsEnabled: process.env.NOTIFICATIONS_ENABLED === 'true',
   // Opsional: URL webhook untuk meneruskan notifikasi eskalasi (WhatsApp/Telegram gateway, dll.)
   notifyWebhookUrl: process.env.NOTIFY_WEBHOOK_URL || '',
+  // Tugas harian/mingguan boleh dikerjakan X menit sebelum jam mulainya (tugas per interval tidak).
+  earlyStartMinutes: Number(process.env.EARLY_START_MINUTES ?? 60),
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 8),
   secureCookies: process.env.NODE_ENV === 'production',
   publicDir: path.join(root, 'public'),

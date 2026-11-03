@@ -39,10 +39,11 @@ module.exports = (db) => {
     const password = String(req.body?.password || '');
     const key = `${req.ip}|${username.toLowerCase()}`;
     if (tooMany(key)) throw new HttpError(429, 'Terlalu banyak percobaan. Coba lagi dalam 15 menit.');
-    const row = db.get('SELECT id, password_hash, active FROM users WHERE username = ?', username);
-    if (!row || !row.active || !auth.verifyPassword(password, row.password_hash)) {
+    const row = db.get('SELECT id, password_hash, pin_hash, active FROM users WHERE username = ?', username);
+    const ok = row && row.active && (auth.verifyPin(password, row.pin_hash) || auth.verifyPassword(password, row.password_hash));
+    if (!ok) {
       fail(key);
-      throw new HttpError(401, 'Username atau password salah.');
+      throw new HttpError(401, 'Username atau PIN/password salah.');
     }
     attempts.delete(key);
     const { token, expires } = auth.createSession(db, row.id);
@@ -59,10 +60,20 @@ module.exports = (db) => {
 
   r.get('/me', auth.requireAuth, (req, res) => res.json(serializeMe(db, req.user)));
 
+  r.post('/me/pin', auth.requireAuth, (req, res) => {
+    const { current, new_pin: pin } = req.body || {};
+    const row = db.get('SELECT password_hash, pin_hash FROM users WHERE id = ?', req.user.id);
+    if (!auth.verifyPassword(current || '', row.password_hash) && !auth.verifyPin(current || '', row.pin_hash)) throw new HttpError(400, 'PIN/password lama salah.');
+    if (!auth.PIN_RE.test(String(pin || ''))) throw new HttpError(400, 'PIN harus 6 angka.');
+    db.run('UPDATE users SET pin_hash = ?, updated_at = ? WHERE id = ?', auth.hashPin(pin), new Date().toISOString(), req.user.id);
+    audit(db, req.user.id, 'user.pin_change', 'user', req.user.id);
+    res.json({ ok: true });
+  });
+
   r.post('/me/password', auth.requireAuth, (req, res) => {
     const { current_password: cur, new_password: next } = req.body || {};
     const row = db.get('SELECT password_hash FROM users WHERE id = ?', req.user.id);
-    if (!auth.verifyPassword(cur || '', row.password_hash)) throw new HttpError(400, 'Password lama salah.');
+    if (!auth.verifyPassword(cur || '', row.password_hash) && !auth.verifyPin(cur || '', db.get('SELECT pin_hash FROM users WHERE id = ?', req.user.id).pin_hash)) throw new HttpError(400, 'Password lama salah.');
     if (!next || String(next).length < 8) throw new HttpError(400, 'Password baru minimal 8 karakter.');
     db.run('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', auth.hashPassword(next), new Date().toISOString(), req.user.id);
     audit(db, req.user.id, 'user.password_change', 'user', req.user.id);

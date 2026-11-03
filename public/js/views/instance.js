@@ -1,5 +1,7 @@
 import { api } from '../api.js';
-import { h, sheet, toast, statusChip, lateChip, shiftChips, fmtDateTime, fmtTime, fmtDue, CATEGORY_LABEL, lightbox, askReason, compressImage } from '../ui.js';
+import { state } from '../state.js';
+import { takeStampedPhoto } from '../camera.js';
+import { h, sheet, toast, statusChip, lateChip, shiftChips, fmtDateTime, fmtTime, fmtDue, CATEGORY_LABEL, lightbox, askReason } from '../ui.js';
 
 function notify() { window.dispatchEvent(new Event('lb:refresh-bell')); }
 
@@ -16,10 +18,17 @@ export async function completeFlow(t, onDone) {
 export function openPhotoForm(t, onDone) {
   const files = [];
   const previews = h('div', { class: 'photo-grid' });
-  const input = h('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true });
   const note = h('textarea', { placeholder: 'Catatan (opsional)' });
   const submit = h('button', { class: 'btn primary big block', disabled: true }, 'Kirim & Selesaikan');
-  const pick = h('button', { class: 'photo-pick', type: 'button', onclick: () => input.click() }, h('span', { style: { fontSize: '30px' } }, '📷'), 'Ambil / Unggah Foto');
+  const stampLines = () => {
+    const when = new Intl.DateTimeFormat('id-ID', { timeZone: t.timezone || 'Asia/Jakarta', dateStyle: 'medium', timeStyle: 'medium', hourCycle: 'h23' }).format(new Date());
+    const tzName = { 'Asia/Jakarta': 'WIB', 'Asia/Makassar': 'WITA', 'Asia/Jayapura': 'WIT' }[t.timezone] || '';
+    return [t.name, `${state.me.name} · ${t.outlet_name}`, `${when} ${tzName}`.trim()];
+  };
+  const pick = h('button', { class: 'photo-pick', type: 'button', onclick: async () => {
+    const f = await takeStampedPhoto(stampLines);
+    if (f && files.length < 3) { files.push(f); refresh(); }
+  } }, h('span', { style: { fontSize: '30px' } }, '📷'), 'Buka Kamera');
   const refresh = () => {
     previews.replaceChildren(...files.map((f, i) => {
       const url = URL.createObjectURL(f);
@@ -29,11 +38,6 @@ export function openPhotoForm(t, onDone) {
     submit.disabled = files.length === 0;
     pick.hidden = files.length >= 3;
   };
-  input.addEventListener('change', async () => {
-    for (const f of input.files) if (files.length < 3) files.push(await compressImage(f));
-    input.value = '';
-    refresh();
-  });
   submit.addEventListener('click', async () => {
     if (!files.length) return toast('Foto bukti wajib diunggah.');
     submit.disabled = true;
@@ -53,9 +57,9 @@ export function openPhotoForm(t, onDone) {
     }
   });
   const s = sheet(t.name, h('div', { class: 'stack' },
-    h('div', { class: 'notice info' }, 'Tugas ini wajib foto bukti. Ambil foto hasil pekerjaan sebelum mengirim.'),
+    h('div', { class: 'notice info' }, 'Tugas ini wajib foto bukti. Foto diambil langsung dari kamera dan otomatis diberi cap nama, outlet, tanggal & jam.'),
     t.instructions ? h('p', { class: 'small' }, t.instructions) : null,
-    input, pick, previews, note, submit));
+    pick, previews, note, submit));
 }
 
 /** Detail tugas: info, instruksi/SOP, riwayat, bukti, dan aksi sesuai izin. */
@@ -64,12 +68,12 @@ export async function openInstance(id, { onChange } = {}) {
   try { d = await api(`/instances/${id}`); } catch (e) { return toast(e.message); }
   const tz = d.timezone;
   const changed = () => { s.close(); notify(); onChange && onChange(); };
-  const upcoming = d.scheduled_at > new Date().toISOString();
+  const upcoming = d.is_upcoming;
 
   const actions = [];
   if (d.can_complete) {
     actions.push(upcoming
-      ? h('div', { class: 'notice info' }, `Tugas ini bisa dikerjakan mulai pukul ${fmtTime(d.scheduled_at, tz)}.`)
+      ? h('div', { class: 'notice info' }, `Tugas ini bisa dikerjakan mulai pukul ${fmtTime(d.available_at, tz)}.`)
       : h('button', { class: 'btn primary big block', onclick: () => { s.close(); completeFlow(d, () => { notify(); onChange && onChange(); }); } },
         d.requires_photo ? '📷 Selesaikan Tugas' : '✔ Selesaikan Tugas'));
   }

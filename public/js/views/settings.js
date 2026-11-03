@@ -76,10 +76,16 @@ export async function renderAudit(el) {
 export function renderAccount(el) {
   const cur = h('input', { type: 'password', autocomplete: 'current-password' });
   const next = h('input', { type: 'password', autocomplete: 'new-password' });
+  const curPin = h('input', { type: 'password', autocomplete: 'current-password' });
+  const newPin = h('input', { type: 'password', inputmode: 'numeric', maxlength: 6, autocomplete: 'new-password' });
   mount(el, h('h1', {}, 'Akun Saya'),
     h('div', { class: 'card' },
       h('div', { class: 'meta' }, 'Nama', h('b', {}, state.me.name), 'Username', h('b', {}, state.me.username), 'Peran', h('b', {}, state.me.role_name),
         'Outlet', h('b', {}, state.me.outlets.map((o) => o.outlet_name).join(', ') || '-')),
+      h('h2', {}, 'Ganti PIN'), field('PIN atau password saat ini', curPin), field('PIN baru (6 angka)', newPin),
+      h('button', { class: 'btn primary block', style: { marginBottom: '16px' }, onclick: async () => {
+        try { await api('/me/pin', { method: 'POST', body: { current: curPin.value, new_pin: newPin.value } }); toast('PIN diganti.'); curPin.value = ''; newPin.value = ''; } catch (e) { toast(e.message); }
+      } }, 'Simpan PIN'),
       h('h2', {}, 'Ganti password'), field('Password lama', cur), field('Password baru (min. 8 karakter)', next),
       h('button', { class: 'btn primary block', onclick: async () => {
         try { await api('/me/password', { method: 'POST', body: { current_password: cur.value, new_password: next.value } }); toast('Password diganti.'); cur.value = ''; next.value = ''; } catch (e) { toast(e.message); }

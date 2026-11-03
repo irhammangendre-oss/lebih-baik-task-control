@@ -15,7 +15,7 @@ export function taskRow(t, reload) {
   const state = !open ? (t.status === 'menunggu_verifikasi' ? 'wait' : 'done') : t.status === 'perlu_perbaikan' ? 'fix' : t.is_overdue ? 'late' : '';
   const mark = { done: '✔', wait: '⏳', fix: '!', late: '', '': '' }[state];
   const tip = !open ? `Sudah dikerjakan${t.completed_by_name ? ` oleh ${t.completed_by_name} (${fmtTime(t.completed_at, t.timezone)})` : ''}${t.status === 'menunggu_verifikasi' ? ' · menunggu verifikasi' : ''}`
-    : t.is_upcoming ? `Belum waktunya. Mulai pukul ${fmtTime(t.scheduled_at, t.timezone)}.`
+    : t.is_upcoming ? `Belum waktunya. Bisa dikerjakan mulai pukul ${fmtTime(t.available_at, t.timezone)}.`
       : !t.can_complete ? 'Tugas ini bukan tanggung jawab Anda.' : null;
   const check = h('button', {
     class: `tcheck ${state}`, 'aria-label': open ? `Selesaikan: ${t.name}` : `Sudah selesai: ${t.name}`, 'aria-pressed': open ? 'false' : 'true',

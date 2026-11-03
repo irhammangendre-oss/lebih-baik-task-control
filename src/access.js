@@ -2,6 +2,7 @@
 const { notFound } = require('./errors');
 const { OPEN_STATUSES } = require('./constants');
 const clock = require('./clock');
+const config = require('./config');
 
 /** Melempar 404 (bukan 403) agar keberadaan data outlet lain tidak bocor. */
 function assertOutlet(user, outletId) {
@@ -84,7 +85,7 @@ function memberInfoLookup(db) {
 const INSTANCE_SELECT = `
   SELECT ti.*, o.name AS outlet_name, o.code AS outlet_code, o.timezone, b.id AS brand_id, b.name AS brand_name,
     cu.name AS completed_by_name, au.name AS assignee_user_name, r.name AS assignee_role_name,
-    vu.name AS verified_by_name, t.instructions, t.sop_text, t.reference_url,
+    vu.name AS verified_by_name, sc.recurrence, t.instructions, t.sop_text, t.reference_url,
     (t.reference_image_file IS NOT NULL) AS has_reference_image,
     (SELECT COUNT(*) FROM task_evidence e WHERE e.instance_id = ti.id) AS evidence_count,
     (SELECT MAX(e.id) FROM task_evidence e WHERE e.instance_id = ti.id) AS last_evidence_id
@@ -92,6 +93,7 @@ const INSTANCE_SELECT = `
   JOIN outlets o ON o.id = ti.outlet_id
   JOIN brands b ON b.id = o.brand_id
   JOIN task_templates t ON t.id = ti.template_id
+  JOIN task_schedules sc ON sc.id = ti.schedule_id
   LEFT JOIN users cu ON cu.id = ti.completed_by
   LEFT JOIN users au ON au.id = ti.assignee_user_id
   LEFT JOIN users vu ON vu.id = ti.verified_by
@@ -101,6 +103,10 @@ function decorate(inst, nowIso = clock.nowIso()) {
   const overdue = OPEN_STATUSES.includes(inst.status) && inst.due_at < nowIso;
   inst.is_overdue = overdue;
   inst.effective_status = overdue ? 'terlambat' : inst.status;
+  // Tugas harian/mingguan boleh dikerjakan lebih awal; tugas per interval (mis. inspeksi per jam) tidak.
+  const early = inst.recurrence === 'interval' ? 0 : config.earlyStartMinutes;
+  inst.available_at = new Date(Date.parse(inst.scheduled_at) - early * 60000).toISOString();
+  inst.is_upcoming = nowIso < inst.available_at;
   inst.is_carried_over = isCarriedOver(inst, nowIso);
   inst.completed_after_shift = !!(inst.shift_end_at && inst.completed_at && inst.completed_at > inst.shift_end_at);
   const base = inst.assignee_type === 'user' ? inst.assignee_user_name

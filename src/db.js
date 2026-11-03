@@ -42,6 +42,11 @@ class Db {
     this.raw.exec(schema);
     const version = this.raw.prepare('PRAGMA user_version').get().user_version;
     if (version < 2) migrateV2(this, schema);
+    if (version < 3) {
+      // v3: login dengan PIN.
+      if (!hasColumn(this, 'users', 'pin_hash')) this.raw.exec('ALTER TABLE users ADD COLUMN pin_hash TEXT');
+      this.raw.exec('PRAGMA user_version = 3');
+    }
   }
   close() { this.raw.close(); }
 }

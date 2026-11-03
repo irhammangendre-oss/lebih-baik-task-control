@@ -32,7 +32,7 @@ function completeTask(db, user, id, { note, files = [] }) {
   }
   const now = clock.now();
   const nowIso = now.toISOString();
-  if (nowIso < inst.scheduled_at) throw bad(`Belum waktunya. Tugas ini mulai ${fmtLocal(inst.scheduled_at, inst.timezone)}.`);
+  if (nowIso < inst.available_at) throw bad(`Belum waktunya. Tugas ini bisa dikerjakan mulai ${fmtLocal(inst.available_at, inst.timezone)}.`);
   if (inst.requires_photo && files.length === 0) throw bad('Foto bukti wajib diunggah untuk tugas ini.');
   if (files.length > 3) throw bad('Maksimal 3 foto.');
   const stored = storeImages(files);

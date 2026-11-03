@@ -205,3 +205,43 @@ test('fitur notifikasi dimatikan: tidak ada notifikasi, tapi eskalasi tetap terc
   assert.ok(mon.body.overdue.length > 0);
   assert.ok(mon.body.overdue.some((t) => t.escalation_stage > 0));
 });
+
+test('login dengan PIN 6 angka; PIN diatur admin & bisa diganti sendiri', async () => {
+  const ctx = setup();
+  const anon = () => request(ctx.app).post('/api/auth/login').set(ctx.H);
+  assert.equal((await anon().send({ username: 'crew', password: '123456' })).status, 200, 'PIN demo');
+  assert.equal((await anon().send({ username: 'crew', password: '654321' })).status, 401);
+  assert.equal((await anon().send({ username: 'crew', password: 'demo1234' })).status, 200, 'password tetap bisa');
+  const admin = await ctx.login('admin');
+  assert.equal((await admin.post('/api/org/users').send({ name: 'Crew PIN', username: 'crewpin', pin: '12ab56', role_code: 'crew', outlets: [] })).status, 400);
+  const created = await admin.post('/api/org/users').send({ name: 'Crew PIN', username: 'crewpin', pin: '482913', role_code: 'crew', outlets: [{ outlet_id: ctx.demo.outlets.k1 }] });
+  assert.equal(created.status, 201, 'tanpa password cukup PIN');
+  assert.equal(created.body.has_pin, 1);
+  const u = await ctx.login('crewpin', '482913');
+  assert.equal((await u.post('/api/me/pin').send({ current: '000000', new_pin: '111222' })).status, 400);
+  assert.equal((await u.post('/api/me/pin').send({ current: '482913', new_pin: '111222' })).status, 200);
+  assert.equal((await anon().send({ username: 'crewpin', password: '111222' })).status, 200);
+  assert.ok(!JSON.stringify(created.body).includes('pin_hash'));
+});
+
+test('tugas harian boleh dikerjakan 60 menit lebih awal, tugas per jam tidak', async () => {
+  const ctx = setup({ time: '07:00' });
+  const admin = await ctx.login('admin');
+  const crew = await ctx.login('crew');
+  const daily = await createTemplate(admin, { name: 'Briefing pagi', start_time: '08:30', due_time: '10:00' });
+  await assign(admin, daily, ctx.demo.outlets.k1, { assignee_type: 'role', assignee_role: 'crew' });
+  const hourly = await createTemplate(admin, { name: 'Cek AC', recurrence: 'interval', start_time: '08:00', end_time: '10:00', interval_minutes: 60, due_after_minutes: 30 });
+  await assign(admin, hourly, ctx.demo.outlets.k1, { assignee_type: 'role', assignee_role: 'crew' });
+  const d = instanceOf(ctx, daily.id, ctx.demo.outlets.k1);
+  const firstHourly = ctx.db.get('SELECT * FROM task_instances WHERE template_id = ? ORDER BY scheduled_at LIMIT 1', hourly.id);
+  ctx.setTime('2026-11-02', '07:20');
+  assert.equal((await crew.post(`/api/instances/${d.id}/complete`)).status, 400, '70 menit sebelum: belum boleh');
+  ctx.setTime('2026-11-02', '07:35');
+  const my = await crew.get('/api/my-tasks');
+  assert.equal(my.body.tasks.find((t) => t.id === d.id).is_upcoming, false);
+  assert.equal(my.body.tasks.find((t) => t.id === firstHourly.id).is_upcoming, true);
+  assert.equal((await crew.post(`/api/instances/${firstHourly.id}/complete`)).status, 400, 'inspeksi per jam tidak boleh lebih awal');
+  const ok = await crew.post(`/api/instances/${d.id}/complete`);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.completed_at, '2026-11-02T00:35:00.000Z');
+});

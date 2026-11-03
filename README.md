@@ -33,7 +33,7 @@ npm run seed:demo
 npm start
 ```
 
-Buka `http://localhost:3000`. Akun demo (password **demo1234**):
+Buka `http://localhost:3000`. Akun demo (password **demo1234**, atau PIN **123456**):
 
 | Username | Peran | Outlet |
 |---|---|---|
@@ -57,6 +57,7 @@ Untuk produksi **jangan** pakai `seed:demo`. Jalankan `npm run seed` (atau langs
 | `UPLOAD_DIR` | `data/uploads` | foto bukti & gambar referensi (privat, di luar folder publik) |
 | `ADMIN_PASSWORD` | acak | password admin pertama |
 | `JOB_INTERVAL_SECONDS` | `60` | interval generate tugas + eskalasi; `0` = matikan (pakai cron) |
+| `EARLY_START_MINUTES` | `60` | tugas harian/mingguan boleh dikerjakan sekian menit sebelum jam mulai (tugas per interval tidak) |
 | `NOTIFICATIONS_ENABLED` | `false` | fitur notifikasi **dimatikan** secara default. Set `true` untuk menyalakan lonceng 🔔 in-app & webhook. Saat mati, tahap eskalasi tetap dihitung & tampil di Monitoring |
 | `NOTIFY_WEBHOOK_URL` | – | opsional: setiap notifikasi baru di-POST (JSON) ke URL ini, mis. gateway WhatsApp/Telegram |
 | `MAX_UPLOAD_MB` | `8` | ukuran maks per foto (foto dikompres di HP ke ±1600px sebelum upload) |
@@ -113,6 +114,12 @@ User=lebihbaik
 - Template/penugasan **dinonaktifkan**, tidak dihapus. Menghentikan penugasan hanya menghapus kejadian yang belum jatuh tempo & belum dikerjakan; histori tetap ada.
 - Semua angka dashboard dihitung dari record database.
 
+## Login PIN & foto bercap
+
+- **PIN 6 angka**: admin mengisi PIN di data karyawan (password jadi opsional). Karyawan login dengan username + PIN; username diingat di HP sehingga berikutnya cukup PIN, dengan keypad angka. PIN dapat diganti sendiri di ☰ Akun Saya. Pembatas percobaan login tetap berlaku (10x / 15 menit).
+- **Foto hanya dari kamera langsung**: aplikasi membuka kamera di dalam halaman (tanpa pilihan galeri), lalu mencetak nama tugas, nama karyawan, outlet, tanggal & jam di foto. Kamera di dalam halaman butuh **HTTPS** (atau localhost); tanpa itu aplikasi memakai kamera bawaan HP dan menolak foto yang berumur > 10 menit. Waktu kirim yang sah tetap dicatat server.
+- **Kerja lebih awal**: tugas harian/mingguan bisa dicentang mulai 60 menit sebelum jam mulai; inspeksi per interval (mis. per jam) tetap tepat waktu.
+
 ## Shift & Serah Terima
 
 Hanya untuk tanggung jawab tugas & serah terima — **bukan** absensi atau penggajian.
@@ -149,7 +156,7 @@ test/                   node:test + supertest
 npm test
 ```
 
-28 tes otomatis, termasuk alur penerimaan lengkap (template → penugasan → checklist → penyelesaian + foto wajib → verifikasi tolak/setujui → eskalasi bertahap tanpa duplikasi → monitoring per peran → histori → isolasi data antar outlet), tes shift (jam per outlet, tugas per shift, tukar shift, tugas dioper, serah terima, migrasi database lama), serta tes izin tim/PIC, tugas individu, aturan kritis, ambang pengulangan, CSRF/sesi, pencegahan eskalasi hak akses, dan idempotensi pembuatan tugas.
+30 tes otomatis, termasuk alur penerimaan lengkap (template → penugasan → checklist → penyelesaian + foto wajib → verifikasi tolak/setujui → eskalasi bertahap tanpa duplikasi → monitoring per peran → histori → isolasi data antar outlet), tes shift (jam per outlet, tugas per shift, tukar shift, tugas dioper, serah terima, migrasi database lama), serta tes izin tim/PIC, tugas individu, aturan kritis, ambang pengulangan, CSRF/sesi, pencegahan eskalasi hak akses, dan idempotensi pembuatan tugas.
 
 ## Batasan MVP & pengembangan berikutnya
 

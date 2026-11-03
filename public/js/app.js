@@ -63,24 +63,31 @@ function setChrome(loggedIn) {
 
 function renderLogin() {
   setChrome(false);
-  const user = h('input', { type: 'text', autocomplete: 'username', autocapitalize: 'none', required: true });
-  const pass = h('input', { type: 'password', autocomplete: 'current-password', required: true });
+  let saved = '';
+  try { saved = localStorage.getItem('lb_username') || ''; } catch { /* abaikan */ }
+  const user = h('input', { type: 'text', autocomplete: 'username', autocapitalize: 'none', required: true, value: saved });
+  // PIN 6 angka -> keypad angka; password biasa tetap bisa diketik.
+  const pass = h('input', { type: 'password', autocomplete: 'current-password', required: true, inputmode: saved ? 'numeric' : null, placeholder: 'PIN 6 angka atau password' });
+  const kb = h('button', { type: 'button', class: 'btn ghost small', style: { minHeight: '32px', padding: '4px 8px' }, onclick: () => {
+    pass.inputMode = pass.inputMode === 'numeric' ? 'text' : 'numeric'; kb.textContent = pass.inputMode === 'numeric' ? 'Pakai password' : 'Pakai PIN'; pass.focus();
+  } }, saved ? 'Pakai password' : 'Pakai PIN');
   const btn = h('button', { class: 'btn primary big block', type: 'submit' }, 'Masuk');
   const form = h('form', { class: 'card login', onsubmit: async (e) => {
     e.preventDefault();
     btn.disabled = true;
     try {
       state.me = await api('/auth/login', { method: 'POST', body: { username: user.value, password: pass.value } });
+      try { localStorage.setItem('lb_username', user.value.trim()); } catch { /* abaikan */ }
       start();
     } catch (err) { toast(err.message); } finally { btn.disabled = false; }
   } },
   h('div', { class: 'row' }, h('span', { class: 'logo' }, 'LB'), h('div', {}, h('div', { class: 'task-title' }, 'Lebih Baik'), h('div', { class: 'muted small' }, 'Task Control Outlet'))),
   h('div', { style: { height: '16px' } }),
   h('label', { class: 'field' }, h('span', {}, 'Username'), user),
-  h('label', { class: 'field' }, h('span', {}, 'Password'), pass),
+  h('label', { class: 'field' }, h('span', { class: 'row' }, h('span', { class: 'grow' }, 'PIN / Password'), kb), pass),
   btn);
   mount(view, form);
-  user.focus();
+  (saved ? pass : user).focus();
 }
 
 function openMenu() {

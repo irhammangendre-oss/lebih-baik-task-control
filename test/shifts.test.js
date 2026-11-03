@@ -158,7 +158,7 @@ test('serah terima shift: dibuat shift asal, dilihat & diterima shift berikutnya
   assert.ok(ctx.db.get("SELECT COUNT(*) AS c FROM audit_logs WHERE action = 'handover.acknowledge'").c === 1);
 });
 
-test('migrasi database v1 -> v2 tanpa kehilangan data', () => {
+test('migrasi database lama (v1) ke versi terbaru tanpa kehilangan data', () => {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lb-mig-')), 'old.db');
   const old = new DatabaseSync(file);
   old.exec('PRAGMA foreign_keys = ON;');
@@ -180,7 +180,8 @@ test('migrasi database v1 -> v2 tanpa kehilangan data', () => {
   `);
   old.close();
   const db = openDb(file);
-  assert.equal(db.get('PRAGMA user_version').user_version, 2);
+  assert.equal(db.get('PRAGMA user_version').user_version, 3);
+  assert.ok(db.all('PRAGMA table_info(users)').some((c) => c.name === 'pin_hash'), 'kolom PIN ditambahkan');
   const inst = db.get('SELECT * FROM task_instances WHERE id = 1');
   assert.deepEqual([inst.status, inst.completed_by, inst.completed_at, inst.shift_no], ['dikerjakan', 1, '2026-11-01T01:30:00.000Z', null]);
   assert.equal(db.get('SELECT team FROM user_outlets').team, 'Bar');

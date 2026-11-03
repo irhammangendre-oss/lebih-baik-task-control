@@ -60,7 +60,8 @@ function userSheet(u, { outlets, users }, reload) {
   const username = h('input', { type: 'text', value: u?.username || '', autocapitalize: 'none' });
   const role = select(state.me.meta.roles.map((r) => [r.code, r.name]), u?.role_code || 'crew');
   const reports = select([['', '— tidak ada —'], ...users.filter((x) => x.id !== u?.id && x.active).map((x) => [x.id, `${x.name} (${x.role_name})`])], u?.reports_to_user_id);
-  const pw = h('input', { type: 'password', autocomplete: 'new-password', placeholder: u ? 'Kosongkan jika tidak diubah' : 'Minimal 8 karakter' });
+  const pw = h('input', { type: 'password', autocomplete: 'new-password', placeholder: u ? 'Kosongkan jika tidak diubah' : 'Minimal 8 karakter (opsional jika pakai PIN)' });
+  const pin = h('input', { type: 'text', inputmode: 'numeric', maxlength: 6, autocomplete: 'off', placeholder: u?.has_pin ? 'Sudah ada PIN — isi untuk mengganti' : '6 angka, mis. 482913' });
   const active = h('input', { type: 'checkbox', checked: u ? !!u.active : true });
   const current = new Map((u?.outlets || []).map((o) => [o.outlet_id, o.team]));
   const currentShift = new Map((u?.outlets || []).map((o) => [o.outlet_id, o.shift_no]));
@@ -73,13 +74,14 @@ function userSheet(u, { outlets, users }, reload) {
   const s = sheet(u ? 'Ubah karyawan' : 'Karyawan baru', h('div', {},
     field('Nama', name), field('Username (untuk login)', username), field('Peran', role),
     field('Melapor ke (atasan langsung)', reports, 'Atur hubungan pelaporan secara bebas — Kasir tidak otomatis membawahi Crew.'),
+    field('PIN login (6 angka)', pin, 'Untuk karyawan outlet: login cukup username + PIN.'),
     field(u ? 'Reset password' : 'Password', pw),
     h('h2', {}, 'Penempatan outlet'), rows.map((r) => r.el),
     h('label', { class: 'check' }, active, 'Aktif'),
     h('button', { class: 'btn primary big block', onclick: async () => {
       const body = {
         name: name.value, username: username.value, role_code: role.value, reports_to_user_id: reports.value ? Number(reports.value) : null,
-        active: active.checked, outlets: rows.filter((r) => r.cb.checked).map((r) => ({ outlet_id: r.o.id, team: r.team.value, shift_no: r.shift.value ? Number(r.shift.value) : null })),
+        active: active.checked, pin: pin.value.trim() || undefined, outlets: rows.filter((r) => r.cb.checked).map((r) => ({ outlet_id: r.o.id, team: r.team.value, shift_no: r.shift.value ? Number(r.shift.value) : null })),
       };
       try {
         if (u) {

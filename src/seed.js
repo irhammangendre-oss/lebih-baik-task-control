@@ -1,7 +1,7 @@
 'use strict';
 const crypto = require('node:crypto');
 const { ROLES, DEFAULT_ROLE_PERMISSIONS, DEFAULT_ESCALATION_RULES } = require('./constants');
-const { hashPassword } = require('./auth');
+const { hashPassword, hashPin } = require('./auth');
 const starter = require('./starter-templates');
 const { ensureOutletShifts } = require('./services/shifts');
 
@@ -53,9 +53,10 @@ function seedDemo(db, { password = 'demo1234', createdAt = now() } = {}) {
     const outlet = (brandId, code, name) => Number(db.run('INSERT INTO outlets (brand_id, code, name, timezone, active, created_at) VALUES (?,?,?,?,1,?)',
       brandId, code, name, 'Asia/Jakarta', ts).lastInsertRowid);
     const hash = hashPassword(password);
+    const pinHash = hashPin('123456');
     const user = (name, username, role, outlets, reportsTo = null, shift = null) => {
-      const id = Number(db.run(`INSERT INTO users (name, username, password_hash, role_code, reports_to_user_id, active, created_at, updated_at)
-        VALUES (?,?,?,?,?,1,?,?)`, name, username, hash, role, reportsTo, ts, ts).lastInsertRowid);
+      const id = Number(db.run(`INSERT INTO users (name, username, password_hash, pin_hash, role_code, reports_to_user_id, active, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,1,?,?)`, name, username, hash, pinHash, role, reportsTo, ts, ts).lastInsertRowid);
       for (const [oid, team] of outlets) db.run('INSERT INTO user_outlets (user_id, outlet_id, team, shift_no) VALUES (?,?,?,?)', id, oid, team || null, shift);
       return id;
     };

@@ -1,7 +1,7 @@
 'use strict';
 const express = require('express');
 const clock = require('../clock');
-const { requirePerm, hashPassword } = require('../auth');
+const { requirePerm, hashPassword, hashPin, PIN_RE } = require('../auth');
 const { bad, notFound, forbidden, conflict } = require('../errors');
 const v = require('../validate');
 const access = require('../access');
@@ -97,7 +97,7 @@ module.exports = (db) => {
   // ---- Karyawan ----
   function userRows(req, outletId) {
     const users = db.all(`SELECT u.id, u.name, u.username, u.role_code, r.name AS role_name, r.level AS role_level,
-        u.reports_to_user_id, s.name AS reports_to_name, u.active, u.created_at
+        u.reports_to_user_id, s.name AS reports_to_name, u.active, u.created_at, (u.pin_hash IS NOT NULL) AS has_pin
       FROM users u JOIN roles r ON r.code = u.role_code LEFT JOIN users s ON s.id = u.reports_to_user_id
       ORDER BY u.active DESC, r.level DESC, u.name`);
     const links = db.all(`SELECT uo.user_id, uo.outlet_id, uo.team, uo.shift_no, o.name AS outlet_name FROM user_outlets uo JOIN outlets o ON o.id = uo.outlet_id`);
@@ -157,14 +157,23 @@ module.exports = (db) => {
     }
   }
 
+  function pinInput(v0) {
+    if (v0 === undefined || v0 === null || v0 === '') return undefined;
+    if (!PIN_RE.test(String(v0))) throw bad('PIN harus 6 angka.');
+    return hashPin(String(v0));
+  }
+
   r.post('/org/users', requirePerm('org.manage'), (req, res) => {
     const { d, outlets } = userInput(req);
-    const pw = String(req.body?.password || '');
-    if (pw.length < 8) throw bad('Password minimal 8 karakter.');
+    const pinHash = pinInput(req.body?.pin);
+    let pw = String(req.body?.password || '');
+    // Karyawan dengan PIN tidak wajib password: dibuatkan password acak (bisa direset admin).
+    if (!pw && pinHash) pw = require('node:crypto').randomBytes(12).toString('base64url');
+    if (pw.length < 8) throw bad('Isi PIN 6 angka atau password minimal 8 karakter.');
     const now = clock.nowIso();
     const id = db.tx(() => {
-      const uid = wrapUnique(() => Number(db.run(`INSERT INTO users (name, username, password_hash, role_code, reports_to_user_id, active, created_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?)`, d.name, d.username, hashPassword(pw), d.role_code, d.reports_to_user_id, d.active, now, now).lastInsertRowid), 'Username sudah dipakai.');
+      const uid = wrapUnique(() => Number(db.run(`INSERT INTO users (name, username, password_hash, pin_hash, role_code, reports_to_user_id, active, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?)`, d.name, d.username, hashPassword(pw), pinHash ?? null, d.role_code, d.reports_to_user_id, d.active, now, now).lastInsertRowid), 'Username sudah dipakai.');
       saveOutlets(req, uid, outlets || []);
       audit(db, req.user.id, 'user.create', 'user', uid, { ...d, outlets });
       return uid;
@@ -183,8 +192,10 @@ module.exports = (db) => {
       wrapUnique(() => db.run('UPDATE users SET name=?, username=?, role_code=?, reports_to_user_id=?, active=?, updated_at=? WHERE id=?',
         d.name, d.username, d.role_code, d.reports_to_user_id, d.active, clock.nowIso(), cur.id), 'Username sudah dipakai.');
       saveOutlets(req, cur.id, outlets);
+      const pinHash = pinInput(req.body?.pin);
+      if (pinHash) db.run('UPDATE users SET pin_hash = ? WHERE id = ?', pinHash, cur.id);
       if (!d.active) db.run('DELETE FROM sessions WHERE user_id = ?', cur.id);
-      audit(db, req.user.id, 'user.update', 'user', cur.id, { ...d, outlets });
+      audit(db, req.user.id, 'user.update', 'user', cur.id, { ...d, outlets, pin_changed: !!req.body?.pin });
     });
     res.json(userRows(req).find((u) => u.id === cur.id));
   });

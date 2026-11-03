@@ -40,7 +40,7 @@ module.exports = (db) => {
       if (!access.isAssignee(user, t)) return false;
       const today = todayBy.get(t.outlet_id);
       return t.business_date === today || (OPEN_STATUSES.includes(t.status) && t.business_date === addDays(today, -1));
-    }).map((t) => ({ ...t, is_upcoming: t.scheduled_at > nowIso, can_complete: access.canComplete(user, t) }))
+    }).map((t) => ({ ...t, can_complete: access.canComplete(user, t) }))
       .sort((a, b) => sortKey(a) - sortKey(b) || a.due_at.localeCompare(b.due_at));
     const current = tasksOut.filter((t) => !t.is_upcoming);
     // Info shift per outlet + serah terima masuk untuk shift user hari ini.
@@ -83,7 +83,7 @@ module.exports = (db) => {
     const shiftFilter = req.query.shift === '1' || req.query.shift === '2' ? Number(req.query.shift) : null;
     const rows = access.listInstances(db, [outletId], date)
       .filter((t) => !shiftFilter || t.shift_no === shiftFilter)
-      .map((t) => ({ ...t, is_upcoming: t.scheduled_at > nowIso, can_complete: OPEN_STATUSES.includes(t.status) && access.canComplete(user, t) }));
+      .map((t) => ({ ...t, can_complete: OPEN_STATUSES.includes(t.status) && access.canComplete(user, t) }));
     const groups = { opening: [], operasional: [], closing: [] };
     for (const t of rows) groups[t.category].push(t);
     const count = (list) => ({

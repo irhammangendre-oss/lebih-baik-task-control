@@ -18,6 +18,10 @@ function verifyPassword(pw, stored) {
   const expected = Buffer.from(keyHex, 'hex');
   return expected.length === key.length && crypto.timingSafeEqual(key, expected);
 }
+const PIN_RE = /^\d{6}$/;
+/** PIN di-hash seperti password; hanya 6 digit angka. */
+const hashPin = (pin) => hashPassword(`pin:${pin}`);
+const verifyPin = (pin, stored) => !!stored && PIN_RE.test(String(pin)) && verifyPassword(`pin:${pin}`, stored);
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 function createSession(db, userId) {
@@ -113,6 +117,6 @@ function clearSessionCookie(res) {
 }
 
 module.exports = {
-  hashPassword, verifyPassword, createSession, destroySession, loadUser, authenticate, requireAuth,
+  hashPassword, verifyPassword, hashPin, verifyPin, PIN_RE, createSession, destroySession, loadUser, authenticate, requireAuth,
   requirePerm, csrfGuard, setSessionCookie, clearSessionCookie, COOKIE,
 };
