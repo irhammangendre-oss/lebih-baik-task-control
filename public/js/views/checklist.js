@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { h, clear, loading, errorBox, select, CATEGORY_LABEL, fmtDate, mount } from '../ui.js';
 import { state } from '../state.js';
-import { taskCard } from './tasks.js';
+import { taskRow } from './tasks.js';
 
 let current = { outlet_id: null, date: null, tab: null, shift: '' };
 
@@ -43,5 +43,5 @@ export async function renderChecklist(el) {
       class: current.tab === k ? 'active' : '', role: 'tab', onclick: () => { current.tab = k; reload(); },
     }, CATEGORY_LABEL[k], h('span', { class: 'cnt' }, `${d.counts[k].done}/${d.counts[k].total}`), d.counts[k].overdue ? ' ⚠' : ''))),
     c.overdue ? h('div', { class: 'notice danger', style: { marginBottom: '10px' } }, `${c.overdue} tugas ${CATEGORY_LABEL[current.tab]} terlambat.`) : null,
-    list.length ? list.map((t) => taskCard(t, reload)) : h('div', { class: 'card empty' }, 'Tidak ada tugas di kategori ini.'));
+    list.length ? h('div', { class: 'card tlist' }, list.map((t) => taskRow(t, reload))) : h('div', { class: 'card empty' }, 'Tidak ada tugas di kategori ini.'));
 }

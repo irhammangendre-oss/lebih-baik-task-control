@@ -86,7 +86,8 @@ const INSTANCE_SELECT = `
     cu.name AS completed_by_name, au.name AS assignee_user_name, r.name AS assignee_role_name,
     vu.name AS verified_by_name, t.instructions, t.sop_text, t.reference_url,
     (t.reference_image_file IS NOT NULL) AS has_reference_image,
-    (SELECT COUNT(*) FROM task_evidence e WHERE e.instance_id = ti.id) AS evidence_count
+    (SELECT COUNT(*) FROM task_evidence e WHERE e.instance_id = ti.id) AS evidence_count,
+    (SELECT MAX(e.id) FROM task_evidence e WHERE e.instance_id = ti.id) AS last_evidence_id
   FROM task_instances ti
   JOIN outlets o ON o.id = ti.outlet_id
   JOIN brands b ON b.id = o.brand_id
